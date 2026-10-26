@@ -78,7 +78,19 @@ whycode/
   agent/ api/      later phases
 tests/  unit/  integration/  e2e/  fixtures/
 scripts/
+frontend/          the screens (React + Vite); see frontend/README.md
 ```
+
+## Frontend
+
+```sh
+cd frontend
+npm install
+npm run dev        # http://localhost:5173 on sample data; set VITE_API_URL=/api to use the API
+npm test
+```
+
+`frontend/README.md` lists the screens and the API endpoints they call.
 
 Every node carries a `repo` property and every id is prefixed with the repo, so several repositories
 can live in one graph without colliding.
