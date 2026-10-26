@@ -59,6 +59,19 @@ def load_settings(**overrides) -> Settings:
         raise ConfigError(msg) from None
 
 
+def redact(text: str, settings: Settings) -> str:
+    """Replace every configured secret value in text with "***".
+
+    Used on library error messages before printing them.
+    """
+    for _, value in settings:
+        if isinstance(value, SecretStr):
+            secret = value.get_secret_value()
+            if secret:
+                text = text.replace(secret, "***")
+    return text
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     """Process-wide settings, loaded on first use so imports never require a .env."""

@@ -2,7 +2,7 @@ import traceback
 
 import pytest
 
-from whycode.config import ConfigError, Settings, load_settings
+from whycode.config import ConfigError, Settings, load_settings, redact
 
 # Distinctive fake values so the tests can prove none of them ever leak into an error.
 FAKE_ENV = {
@@ -107,3 +107,15 @@ def test_error_does_not_chain_pydantic_error(env):
 
 def test_env_file_points_at_project_root():
     assert str(Settings.model_config["env_file"]).endswith(".env")
+
+
+def test_redact_replaces_every_secret_value(env):
+    env()
+    s = load_settings(_env_file=None)
+    text = (
+        "token fake-secret-t1, key fake-secret-g1, model fake-model-gm, " + FAKE_ENV["POSTGRES_DSN"]
+    )
+    out = redact(text, s)
+    for value in ("fake-secret-t1", "fake-secret-g1", FAKE_ENV["POSTGRES_DSN"]):
+        assert value not in out
+    assert "fake-model-gm" in out  # non-secret settings are left alone
