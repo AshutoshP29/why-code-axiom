@@ -1,7 +1,7 @@
 """Neo4j driver construction for the two targets: Aura (real data) and the local test container."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from neo4j import Driver, GraphDatabase
 
@@ -13,7 +13,7 @@ class Neo4jTarget:
     name: str
     uri: str
     username: str
-    password: str
+    password: str = field(repr=False)
     database: str
 
     def driver(self) -> Driver:
