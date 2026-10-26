@@ -23,6 +23,15 @@ cp .env.example .env          # then fill in every value; never commit .env
 docker compose up -d          # Postgres 16 (raw cache) + Neo4j 5 (integration tests only)
 ```
 
+Postgres is exposed on host port 5433 (not 5432) so it does not clash with a locally installed Postgres.
+
+```sh
+uv run python scripts/check_connections.py                # OK/FAIL per service, lists usable LLM models
+uv run python scripts/check_connections.py --no-llm-call  # same, but zero LLM generation calls
+uv run python scripts/apply_schema.py --target test       # schema -> local Neo4j test container
+uv run python scripts/apply_schema.py --target aura       # schema -> Aura (refuses a non-empty graph)
+```
+
 Configuration is read by `whycode/config.py`. A missing or invalid variable stops the program with a
 message that names the variable and never prints any value.
 
