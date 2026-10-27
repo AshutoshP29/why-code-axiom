@@ -40,8 +40,8 @@ function HomeContent({ repoId, partialNote }: { repoId: string; partialNote: str
         <Badge tone="teal">Ask the codebase why</Badge>
         <h1 className="mt-4 text-4xl font-bold tracking-tight sm:text-5xl">Why is the code like this?</h1>
         <p className="mx-auto mt-4 max-w-xl text-muted">
-          Pick a function, file or config key and ask. Every answer comes with its evidence, its date and the
-          person to ask. If the history does not say, WhyCode says so.
+          Ask a question, or pick a function, file or config key first. Every answer comes with its evidence, its
+          date and the person to ask. If the history does not say, WhyCode says so.
         </p>
         <div className="mx-auto mt-7 max-w-2xl">
           <AskBar variant="hero" />

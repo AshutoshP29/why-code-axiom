@@ -18,7 +18,7 @@ describe('Home', () => {
     expect(screen.getByText('Sample data')).toBeInTheDocument()
   })
 
-  it('asks only after an entity is picked', async () => {
+  it('asks about a picked entity', async () => {
     const user = userEvent.setup()
     renderApp('/')
     const ask = await screen.findByRole('search', { name: 'Ask why' })
@@ -33,6 +33,47 @@ describe('Home', () => {
     await user.type(within(ask).getByRole('textbox', { name: 'Your question' }), 'why strip the header?')
     await user.click(trace)
     expect(currentLocation()).toBe(`/why?entity=${E.rebuildAuth.id}&q=why strip the header?`)
+  })
+
+  it('asks a plain question with nothing picked', async () => {
+    const user = userEvent.setup()
+    renderApp('/')
+    const ask = await screen.findByRole('search', { name: 'Ask why' })
+    await user.type(within(ask).getByRole('textbox', { name: 'Your question' }), 'why does rebuild_auth strip the header?')
+    await user.click(within(ask).getByRole('button', { name: 'Trace' }))
+
+    expect(currentLocation()).toBe('/why?q=why does rebuild_auth strip the header?')
+    expect(
+      await screen.findByRole('heading', { level: 1, name: /Session\.rebuild_auth strip the Authorization header/ }),
+    ).toBeInTheDocument()
+    // The top bar keeps the question as typed, still with no entity picked.
+    const bar = screen.getByRole('search', { name: 'Ask why' })
+    expect(within(bar).getByRole('textbox', { name: 'Your question' })).toHaveValue('why does rebuild_auth strip the header?')
+    expect(within(bar).getByRole('button', { name: 'Pick an entity' })).toBeInTheDocument()
+  })
+
+  it('does not send a blank question', async () => {
+    const user = userEvent.setup()
+    renderApp('/')
+    const ask = await screen.findByRole('search', { name: 'Ask why' })
+    await user.type(within(ask).getByRole('textbox', { name: 'Your question' }), '   ')
+    expect(within(ask).getByRole('button', { name: 'Trace' })).toBeDisabled()
+    await user.keyboard('{Enter}')
+    expect(currentLocation()).toBe('/')
+  })
+
+  it('clears a picked entity to ask a plain question instead', async () => {
+    const user = userEvent.setup()
+    renderApp('/')
+    const ask = await screen.findByRole('search', { name: 'Ask why' })
+    await user.click(within(ask).getByRole('button', { name: 'Pick an entity' }))
+    await user.type(screen.getByRole('combobox'), 'verify')
+    await user.click(await screen.findByRole('option', { name: /verify/ }))
+
+    await user.click(within(ask).getByRole('button', { name: 'Clear entity' }))
+    expect(within(ask).getByRole('button', { name: 'Pick an entity' })).toBeInTheDocument()
+    expect(within(ask).queryByRole('button', { name: 'Clear entity' })).not.toBeInTheDocument()
+    expect(within(ask).getByRole('textbox', { name: 'Your question' })).toHaveFocus()
   })
 
   it('picks an entity with the keyboard', async () => {

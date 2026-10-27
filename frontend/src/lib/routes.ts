@@ -1,7 +1,8 @@
 // Every screen's state lives in the URL, so answers can be shared and Back works.
 
-export function whyPath(entityId: string, question: string): string {
-  return `/why?${new URLSearchParams({ entity: entityId, q: question })}`
+/** entityId null: a plain question, and the API finds the entity. */
+export function whyPath(entityId: string | null, question: string): string {
+  return `/why?${new URLSearchParams(entityId ? { entity: entityId, q: question } : { q: question })}`
 }
 
 export function lineagePath(entityId: string, asOfYear?: number): string {
