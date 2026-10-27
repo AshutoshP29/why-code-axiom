@@ -108,8 +108,10 @@ def test_scanner_ignores_clean_text(clean):
 
 
 # Commit messages must not carry AI attribution trailers (team rule for this repo).
+# Both patterns are anchored to the start of a line, where the trailer and the footer actually
+# appear, so a message that merely talks about them is not flagged.
 AI_ATTRIBUTION = re.compile(
-    r"^co-authored-by:.*(claude|anthropic)|generated with \[?claude code",
+    r"^co-authored-by:.*(claude|anthropic)|^\W*generated with \[?claude code",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -136,6 +138,7 @@ def test_no_ai_attribution_in_commit_messages():
         "Fix x\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
         "Fix x\n\nco-authored-by: Someone <noreply@anthropic.com>",
         "Add y\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+        "Add y\n\nGenerated with Claude Code",
     ],
 )
 def test_attribution_detector_catches_trailers(message):
@@ -148,6 +151,7 @@ def test_attribution_detector_catches_trailers(message):
         "Add the Claude-free parser",
         "Fix x\n\nCo-authored-by: Manas Gupta <manas@example.com>",
         "Mention claude code in the README",
+        "Add a check\n\nScans for the footer that reads generated with Claude Code in PRs.",
     ],
 )
 def test_attribution_detector_ignores_normal_messages(message):
