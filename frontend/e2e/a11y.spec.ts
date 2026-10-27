@@ -4,6 +4,10 @@ import { expect, ID, lineage, ready, test, why } from './fixtures'
 
 // Automatic accessibility scan (axe-core) against WCAG 2.1 A and AA on every screen and dialog.
 
+// A full-page scan is slow, and the first one in a browser also loads axe-core: on a busy laptop
+// that went past the 30-second default with the page fully loaded. The checks are unchanged.
+test.describe.configure({ timeout: 60_000 })
+
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const found = results.violations.map(
