@@ -89,6 +89,18 @@ describe('Home', () => {
     expect(within(ask).getByRole('textbox', { name: 'Your question' })).toHaveFocus()
   })
 
+  it('shows all four outcomes, the hedged one included', async () => {
+    const user = userEvent.setup()
+    renderApp('/')
+    expect(await screen.findByRole('heading', { name: 'What you will see' })).toBeInTheDocument()
+    for (const badge of ['Answered', 'Superseded', 'Low confidence', 'Refused']) {
+      expect(screen.getByText(badge, { selector: 'span' })).toBeInTheDocument()
+    }
+    await user.click(screen.getByRole('link', { name: /Why is there no default timeout\?/ }))
+    expect(currentLocation()).toBe(`/why?entity=${E.timeout.id}&q=Why is there no default timeout?`)
+    expect(await screen.findByRole('region', { name: 'Low confidence: check before relying on this' })).toBeInTheDocument()
+  })
+
   it('opens the decision history from a hotspot', async () => {
     const user = userEvent.setup()
     renderApp('/')

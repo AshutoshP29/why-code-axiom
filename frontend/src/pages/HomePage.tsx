@@ -21,6 +21,7 @@ const STATS: { key: keyof Overview['counts']; label: string; caption: string; to
 const OUTCOME: Record<ShowcaseOutcome, { label: string; tone: Tone }> = {
   answered: { label: 'Answered', tone: 'teal' },
   superseded: { label: 'Superseded', tone: 'amber' },
+  hedged: { label: 'Low confidence', tone: 'amber' },
   refused: { label: 'Refused', tone: 'red' },
 }
 

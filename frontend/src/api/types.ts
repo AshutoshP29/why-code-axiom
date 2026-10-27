@@ -235,7 +235,7 @@ export interface ExampleQuestion {
   question: string
 }
 
-export type ShowcaseOutcome = 'answered' | 'superseded' | 'refused'
+export type ShowcaseOutcome = 'answered' | 'superseded' | 'hedged' | 'refused'
 
 export interface ShowcaseItem {
   outcome: ShowcaseOutcome

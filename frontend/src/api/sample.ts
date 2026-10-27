@@ -265,6 +265,12 @@ export const OVERVIEW: Overview = {
       summary: 'Shows the newest rule and the replaced ones as history.',
     },
     {
+      outcome: 'hedged',
+      entity: E.timeout,
+      question: 'Why is there no default timeout?',
+      summary: 'A likely reason from a single source, given under a warning.',
+    },
+    {
       outcome: 'refused',
       entity: E.poolMaxsize,
       question: 'Why is pool_maxsize 10?',
