@@ -30,10 +30,14 @@ development. An absolute URL such as `http://localhost:8000/api` also works.
 
 ```sh
 npm test               # unit and screen tests (no network)
+npm run e2e            # browser tests in Edge, Chrome and a phone emulation (see QA.md)
+npm run e2e:report     # HTML report of the last browser run, with page screenshots
 npm run lint           # oxlint
 npm run typecheck      # tsc
 npm run build          # production build in dist/
 ```
+
+`QA.md` has the latest QA results, what was fixed, and what is not covered yet.
 
 ## Screens and routes
 
@@ -44,8 +48,9 @@ npm run build          # production build in dist/
 | Refusal | same route | Shown when the API refuses (confidence below the threshold): facts kept apart from reasons, related items, ask the owner, open commit history, flag as missing context. |
 | Decision lineage | `/lineage?entity=<id>&asof=<year>` | Superseded, partial and active decisions in order, with "View as of" time travel and every commit linked to a decision or marked as having none. |
 | Graph health | `/health` | The five ingestion stages, graph contents, evaluation table, gap queue, export and re-run. |
+| Evaluation | `/evaluation?expected=<outcome>` | Every labelled question, its right response, and each system's result. Not in the designs; it backs "How we will prove it" in the architecture doc. |
 | Explore | `/explore?file=<id>` | File tree plus search. Not in the designs yet, so it reuses the Explorer sidebar. |
-| Repo switcher, Add repository, Ingestion | top bar and Home | Switch repos, check a GitHub link before ingesting, follow progress. |
+| Repo switcher, Add repository, Ingestion | top bar and Home | Switch repos, check a GitHub link before ingesting, follow progress. If ingestion stops with an error, Home says where and why and offers a re-run. |
 
 All state is in the URL, so any answer can be shared as a link.
 
@@ -77,6 +82,7 @@ The contract is `src/api/types.ts`; `src/api/http.ts` is the client. In short:
 | POST | `/ask` | `{repo, entity_id, question}` | `Answer` (`verdict: "answered"` or `"refused"`) |
 | GET | `/lineage` | `repo`, `entity_id`, optional `as_of` (`YYYY-MM-DD`) | `Lineage` |
 | GET | `/health` | `repo` | `Health` |
+| GET | `/evaluation` | `repo` | `Evaluation` (summary plus every labelled question) |
 | POST | `/gaps` | `{repo, entity_id, question}` | `Gap` |
 
 Points worth knowing when building the backend:
@@ -94,7 +100,12 @@ Points worth knowing when building the backend:
   current decision), `entity_id` on code items (clicking one asks about it), and `url` on PRs,
   issues and commits (clicking opens them).
 - **Evaluation numbers:** send `measured: false` until the 40-question test has really run; the
-  page then marks the numbers as placeholders.
+  pages then mark the numbers as placeholders. A question's result per system is `null` until
+  that system has been run on it.
+- **Failed ingestion:** set the repo's `status` to `ERROR`, `stage` to where it stopped, and
+  `error` to a plain sentence for the user (it is shown as is, so never include secrets).
+- **Unreachable API:** the client reports "Could not reach the WhyCode API" itself; other errors
+  show the `detail` from the response.
 
 ## Layout
 
