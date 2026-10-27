@@ -37,6 +37,23 @@ message that names the variable and never prints any value.
 
 The free Aura instance pauses when idle. If Neo4j checks fail, resume it in the Aura console.
 
+## Pipeline (Phase 1, one pull request)
+
+```sh
+# 1. Fetch the PR, its comments, reviews, commits, files, timeline and linked issues into Postgres.
+#    Re-running sends ETags; unchanged items come back 304 and cost no rate limit.
+uv run python -m whycode.ingest.fetch_pr --repo psf/requests --pr 5797
+
+# 2. Extract decisions with the LLM. --dry-run shows what would be sent and makes no call.
+uv run python -m whycode.extract.run --repo psf/requests --pr 5797 --dry-run
+uv run python -m whycode.extract.run --repo psf/requests --pr 5797 --max-calls 10
+```
+
+Every LLM answer is cached in Postgres by `sha256(prompt_version + model + input)`, so a re-run
+costs no calls. `LLM_MAX_CALLS` is a hard cap per run. Gemini is tried first and Groq is the
+fallback; a provider that keeps failing is skipped for the rest of the run. A decision is kept
+only if every evidence quote is found verbatim (whitespace aside) in the source it cites.
+
 ## Tests
 
 ```sh
