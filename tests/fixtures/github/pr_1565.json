@@ -1,0 +1,52 @@
+{
+  "_about": "Hand-written GitHub API responses for a fake PR test/fixture#1565. Keys are request paths.",
+  "/repos/test/fixture/pulls/1565": {
+    "number": 1565,
+    "title": "Switch the X parser for Y",
+    "state": "closed",
+    "merged": true,
+    "merged_at": "2021-07-01T10:00:00Z",
+    "merge_commit_sha": "abc1234def5678abc1234def5678abc1234def56",
+    "html_url": "https://github.com/test/fixture/pull/1565",
+    "user": {"login": "alice"},
+    "merged_by": {"login": "bob"},
+    "body": "X is LGPL licensed, Y is MIT.\n\nFixes #1500 and see #1400.\nDocs: https://example.com/page#12"
+  },
+  "/repos/test/fixture/issues/1565/comments": [
+    {"id": 9001, "user": {"login": "carol"}, "created_at": "2021-06-20T09:00:00Z",
+     "html_url": "https://github.com/test/fixture/pull/1565#issuecomment-9001",
+     "body": "We cannot ship an LGPL dependency inside an MIT library."},
+    {"id": 9002, "user": {"login": "bob"}, "created_at": "2021-06-21T09:00:00Z",
+     "html_url": "https://github.com/test/fixture/pull/1565#issuecomment-9002",
+     "body": "Agreed. Y is close enough in accuracy; let's switch."}
+  ],
+  "/repos/test/fixture/pulls/1565/comments": [
+    {"id": 7001, "user": {"login": "bob"}, "path": "src/fixture/compat.py",
+     "html_url": "https://github.com/test/fixture/pull/1565#discussion_r7001",
+     "body": "Keep the old import as a fallback for one release."}
+  ],
+  "/repos/test/fixture/pulls/1565/reviews": [
+    {"id": 5001, "user": {"login": "bob"}, "state": "APPROVED", "body": ""}
+  ],
+  "/repos/test/fixture/pulls/1565/commits": [
+    {"sha": "1111111111111111111111111111111111111111",
+     "commit": {"message": "Use Y instead of X\n\nCloses #1501", "author": {"name": "alice", "date": "2021-06-19T08:00:00Z"}}}
+  ],
+  "/repos/test/fixture/pulls/1565/files": [
+    {"filename": "src/fixture/compat.py", "status": "renamed", "previous_filename": "fixture/compat.py"}
+  ],
+  "/repos/test/fixture/issues/1565/timeline": [
+    {"event": "labeled"},
+    {"event": "connected", "source": {"issue": {"number": 1502}}}
+  ],
+  "/repos/test/fixture/issues/1500": {"number": 1500, "title": "LGPL dependency", "state": "closed", "body": "X is LGPL."},
+  "/repos/test/fixture/issues/1500/comments": [
+    {"id": 8001, "user": {"login": "dave"}, "body": "This blocks our MIT distribution."}
+  ],
+  "/repos/test/fixture/issues/1501": {"number": 1501, "title": "Remove X", "state": "closed", "body": ""},
+  "/repos/test/fixture/issues/1501/comments": [],
+  "/repos/test/fixture/issues/1400": {"number": 1400, "title": "Encoding detection is slow", "state": "open", "body": ""},
+  "/repos/test/fixture/issues/1400/comments": [],
+  "/repos/test/fixture/issues/1502": {"number": 1502, "title": "Track licence", "state": "closed", "body": ""},
+  "/repos/test/fixture/issues/1502/comments": []
+}
