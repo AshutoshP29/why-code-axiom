@@ -17,19 +17,23 @@ const RELATED_CAPTION: Record<EntityKind, string> = {
   module: 'Mention the module, but do not explain it',
 }
 
-/** When the history does not say: facts only, kept apart from reasons, plus who to ask. */
+/**
+ * When the history does not say: facts only, kept apart from reasons, plus who to ask.
+ * `entity` is null when a question asked without one matched nothing in the graph.
+ */
 export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId: string }) {
   const [asking, setAsking] = useState<Person | null>(null)
   const flag = useFlagGap(repoId)
+  const entity = answer.entity
   const owner = answer.who_to_ask[0] ?? null
   // A double-click lands before the button re-renders as disabled; this stops the second flag.
   const flagSent = useRef(false)
 
   function sendFlag() {
-    if (flagSent.current) return
+    if (!entity || flagSent.current) return
     flagSent.current = true
     flag.mutate(
-      { entityId: answer.entity.id, question: answer.question },
+      { entityId: entity.id, question: answer.question },
       { onError: () => (flagSent.current = false) },
     )
   }
@@ -37,13 +41,13 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
   return (
     <div className="grid flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
       <article className="min-w-0 px-4 py-6 sm:px-8 lg:px-12">
-        <Breadcrumb parts={entityCrumbs(answer.entity)} />
+        {entity && <Breadcrumb parts={entityCrumbs(entity)} />}
         <h1 className="mt-2 text-2xl leading-snug font-semibold">{answer.question}</h1>
         {answer.partial_history && <PartialHistoryNote />}
 
         <Card className="mt-5 border-red/40 p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge tone="red">No recorded decision</Badge>
+            <Badge tone="red">{entity ? 'No recorded decision' : 'No matching item'}</Badge>
             <div className="ml-auto">
               <ConfidenceMeter
                 value={answer.confidence}
@@ -63,7 +67,9 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
             <span className="text-xs text-faint">Facts, not reasons</span>
           </div>
           {answer.known_facts.length === 0 ? (
-            <p className="mt-3 text-sm text-faint">No facts are recorded for this item.</p>
+            <p className="mt-3 text-sm text-faint">
+              {entity ? 'No facts are recorded for this item.' : 'No facts match this question.'}
+            </p>
           ) : (
             <ul className="mt-3 space-y-3">
               {answer.known_facts.map((fact) => (
@@ -87,7 +93,9 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
             <h2 id="related-heading" className="font-semibold">
               Closest related items
             </h2>
-            <span className="text-xs text-faint">{RELATED_CAPTION[answer.entity.kind]}</span>
+            <span className="text-xs text-faint">
+              {entity ? RELATED_CAPTION[entity.kind] : 'Share words with the question, but do not answer it'}
+            </span>
           </div>
           {answer.related.length === 0 ? (
             <p className="mt-3 text-sm text-faint">Nothing else mentions it.</p>
@@ -118,9 +126,11 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
             </Button>
           )}
           <ExternalButton href={answer.history_url}>Open commit history</ExternalButton>
-          <Button disabled={flag.isPending || flag.isSuccess} onClick={sendFlag}>
-            {flag.isSuccess ? 'Flagged' : flag.isPending ? 'Flagging…' : 'Flag as missing context'}
-          </Button>
+          {entity && (
+            <Button disabled={flag.isPending || flag.isSuccess} onClick={sendFlag}>
+              {flag.isSuccess ? 'Flagged' : flag.isPending ? 'Flagging…' : 'Flag as missing context'}
+            </Button>
+          )}
         </div>
         <div aria-live="polite" className="mt-2 text-xs">
           {flag.isSuccess && (
@@ -137,16 +147,18 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
       </article>
 
       <aside className="space-y-7 border-t border-line bg-chrome p-4 lg:border-t-0 lg:border-l">
-        <section>
-          <SectionLabel>Last owner of this code</SectionLabel>
-          <div className="mt-3">
-            {owner ? (
-              <PersonCard person={owner} onAsk={setAsking} />
-            ) : (
-              <p className="text-xs text-faint">No owner recorded.</p>
-            )}
-          </div>
-        </section>
+        {entity && (
+          <section>
+            <SectionLabel>Last owner of this code</SectionLabel>
+            <div className="mt-3">
+              {owner ? (
+                <PersonCard person={owner} onAsk={setAsking} />
+              ) : (
+                <p className="text-xs text-faint">No owner recorded.</p>
+              )}
+            </div>
+          </section>
+        )}
         <ConfidenceFactors confidence={answer.confidence} factors={answer.confidence_factors} refused />
       </aside>
 
@@ -154,7 +166,7 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
         <AskMaintainerDialog
           person={asking}
           repo={repoId}
-          entity={answer.entity}
+          entity={entity}
           question={answer.question}
           finding="WhyCode found no recorded decision, discussion or incident that explains it."
           onClose={() => setAsking(null)}

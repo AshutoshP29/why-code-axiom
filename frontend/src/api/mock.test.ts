@@ -17,6 +17,36 @@ describe('mock API', () => {
     expect(unknown).toMatchObject({ verdict: 'refused', question: 'Why does json() raise?' })
   })
 
+  it('marks a picked entity as selected, with no match score', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    expect(await api.ask(SAMPLE_REPO, E.rebuildAuth.id, 'why?')).toMatchObject({ matched_by: 'selected', match_score: null })
+  })
+
+  it('finds the entity itself when none is picked', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, null, 'why does rebuild_auth strip the header?')
+    expect(answer).toMatchObject({ verdict: 'answered', entity: { id: E.rebuildAuth.id }, matched_by: 'search', match_score: 0.9 })
+    // The entity-match factor shows the same score the match line does.
+    expect(answer.confidence_factors.find((f) => f.label === 'Entity match')).toMatchObject({ value: 0.9, display: '90%' })
+
+    // A weak but real match still finds the item; here the item has no recorded reason.
+    const pool = await api.ask(SAMPLE_REPO, null, 'why is the pool size 10?')
+    expect(pool).toMatchObject({ verdict: 'refused', entity: { id: E.poolMaxsize.id }, matched_by: 'search' })
+  })
+
+  it('refuses with no entity when nothing matches the question', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, null, 'why did requests drop chardet?')
+    expect(answer).toMatchObject({ verdict: 'refused', entity: null, matched_by: 'search', match_score: null })
+    if (answer.verdict !== 'refused') throw new Error('expected a refusal')
+    // Evidence that shares a word ("drop") is offered as related only, with a low score.
+    expect(answer.related.map((r) => r.title)).toEqual(['PR #1565: only strip auth when the host changes'])
+    expect(answer.related[0].match_score).toBeLessThan(0.4)
+
+    // Other repos have no sample entities, so a plain question matches nothing there.
+    expect((await api.ask('pallets/flask', null, 'why is max_retries off?')).entity).toBeNull()
+  })
+
   it('rejects items that are not in the graph', async () => {
     const api = createMockApi({ delayMs: 0 })
     await expect(api.ask(SAMPLE_REPO, 'psf/requests#fn:nope', 'why?')).rejects.toBeInstanceOf(ApiError)

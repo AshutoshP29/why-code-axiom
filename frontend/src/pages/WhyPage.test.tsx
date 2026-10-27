@@ -86,6 +86,20 @@ describe('Refusal', () => {
     expect(screen.queryByText('Active decision')).not.toBeInTheDocument()
   })
 
+  it('still explains itself when a question matched no item', async () => {
+    renderApp(`/why?${new URLSearchParams({ q: 'why did requests drop chardet?' })}`)
+
+    expect(await screen.findByText('No matching item')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'why did requests drop chardet?' })).toBeInTheDocument()
+    expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument()
+    expect(screen.getByText(/No function, file or config key in the graph matches this question/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'PR #1565: only strip auth when the host changes' })).toBeInTheDocument()
+    expect(screen.getByText('18% match')).toBeInTheDocument()
+    // There is no item to flag or to name an owner for.
+    expect(screen.queryByRole('button', { name: 'Flag as missing context' })).not.toBeInTheDocument()
+    expect(screen.queryByText('Last owner of this code')).not.toBeInTheDocument()
+  })
+
   it('flags missing context into the gap queue on Graph health', async () => {
     const user = userEvent.setup()
     renderApp(whyPath(E.poolMaxsize.id, 'why is the default 10?'))

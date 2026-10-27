@@ -18,13 +18,14 @@ export function AskMaintainerDialog({
 }: {
   person: Person
   repo: string
-  entity: Entity
+  entity: Entity | null // null when the question matched no item
   question: string
   finding: string // "WhyCode found: ..." or "WhyCode found no recorded decision ..."
   onClose: () => void
 }) {
+  const where = entity ? `${entityLabel(entity)} in ${repo}${entity.path ? ` (${entity.path})` : ''}` : repo
   const [message, setMessage] = useState(
-    `Hi @${person.login}, I'm looking at ${entityLabel(entity)} in ${repo}${entity.path ? ` (${entity.path})` : ''}.\n\n` +
+    `Hi @${person.login}, I'm looking at ${where}.\n\n` +
       `${question}\n\n${finding}\n\n` +
       'Could you share the reasoning, or point me to where it was discussed? Thanks!',
   )

@@ -42,6 +42,15 @@ describe('createHttpApi', () => {
     })
   })
 
+  it('sends entity_id: null for a question asked without an entity', async () => {
+    const f = fakeFetch({ verdict: 'refused' })
+    await createHttpApi('/api', f).ask('psf/requests', null, 'why did requests drop chardet?')
+
+    const body: unknown = JSON.parse(String(f.mock.calls[0][1]?.body))
+    expect(body).toEqual({ repo: 'psf/requests', entity_id: null, question: 'why did requests drop chardet?' })
+    expect(body).toHaveProperty('entity_id', null) // present and null, not left out
+  })
+
   it('works with an absolute base URL', async () => {
     const f = fakeFetch([])
     await createHttpApi('http://localhost:8000/api', f).listRepos()

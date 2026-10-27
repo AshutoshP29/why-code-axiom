@@ -6,7 +6,10 @@ import { useRepo } from '../state/repo-context'
 import { AnsweredView } from './AnsweredView'
 import { RefusalView } from './RefusalView'
 
-/** /why?entity=<id>&q=<question>: the API decides between an answer and a refusal. */
+/**
+ * /why?entity=<id>&q=<question>, or /why?q=<question> to let the API find the entity.
+ * The API decides between an answer and a refusal.
+ */
 export function WhyPage() {
   const [params] = useSearchParams()
   const entityId = params.get('entity')
@@ -15,13 +18,15 @@ export function WhyPage() {
   const { data, error, refetch } = useAnswer(repo?.id ?? null, entityId, question)
   useTitle(data?.question ?? 'Tracing')
 
-  if (!entityId) return <Navigate to="/" replace />
+  if (!entityId && !question.trim()) return <Navigate to="/" replace />
   if (!repo) return null
   if (error) return <ErrorNotice error={error} onRetry={() => refetch()} />
   if (!data) return <Loading label="Tracing the history" />
+  // Keyed so dialogs and flags start fresh for each item and question.
+  const key = `${data.entity?.id ?? ''}|${data.question}`
   return data.verdict === 'answered' ? (
-    <AnsweredView key={data.entity.id} answer={data} repoId={repo.id} />
+    <AnsweredView key={key} answer={data} repoId={repo.id} />
   ) : (
-    <RefusalView key={data.entity.id} answer={data} repoId={repo.id} />
+    <RefusalView key={key} answer={data} repoId={repo.id} />
   )
 }

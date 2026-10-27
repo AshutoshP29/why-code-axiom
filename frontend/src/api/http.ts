@@ -65,6 +65,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     getExplorer: (repo) => get<Explorer>('/explorer', { repo }),
     searchEntities: (repo, text) => get<EntityMatch[]>('/entities/search', { repo, q: text }),
     getEntity: (repo, entityId) => get<Entity>('/entities', { repo, id: entityId }),
+    // entity_id is sent as null, not left out, when the user picked nothing.
     ask: (repo, entityId, question) =>
       post<Answer>('/ask', { repo, entity_id: entityId, question }),
     getLineage: (repo, entityId, asOf) =>

@@ -161,9 +161,20 @@ export interface RelatedItem {
   source: SourceRef
 }
 
+/** How the item an answer is about was found. */
+export type MatchedBy =
+  | 'selected' // the user picked the entity before asking
+  | 'search' // the question came without one; the API chose it (full-text search, then vector search over evidence)
+
 interface AnswerBase {
   question: string
-  entity: Entity
+  /**
+   * The code item the answer is about: the one the user picked, or the one the API matched from
+   * the question. null only on a refusal where nothing in the graph matched the question.
+   */
+  entity: Entity | null
+  matched_by: MatchedBy
+  match_score: number | null // 0..1, how well the question matched `entity`; null unless matched_by is 'search' and an entity was found
   confidence: number // 0..1
   threshold: number // below this WhyCode refuses
   partial_history: boolean
@@ -173,6 +184,7 @@ interface AnswerBase {
 
 export interface AnsweredAnswer extends AnswerBase {
   verdict: 'answered'
+  entity: Entity // an answer is always about one item
   answer_text: string // worded by the LLM from graph facts only
   decision: Decision // the current governing decision
   superseded: SupersededNote[]
@@ -311,7 +323,8 @@ export interface WhyCodeApi {
   getExplorer(repo: string): Promise<Explorer>
   searchEntities(repo: string, text: string): Promise<EntityMatch[]>
   getEntity(repo: string, entityId: string): Promise<Entity>
-  ask(repo: string, entityId: string, question: string): Promise<Answer>
+  /** entityId null: the user picked nothing, so the API finds the entity from the question itself. */
+  ask(repo: string, entityId: string | null, question: string): Promise<Answer>
   getLineage(repo: string, entityId: string, asOf: string | null): Promise<Lineage>
   getHealth(repo: string): Promise<Health>
   getEvaluation(repo: string): Promise<Evaluation>
