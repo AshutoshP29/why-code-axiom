@@ -105,3 +105,50 @@ def test_scanner_detects_fake_keys(sample, expected):
 )
 def test_scanner_ignores_clean_text(clean):
     assert find_keys(clean) == []
+
+
+# Commit messages must not carry AI attribution trailers (team rule for this repo).
+AI_ATTRIBUTION = re.compile(
+    r"^co-authored-by:.*(claude|anthropic)|generated with \[?claude code",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def find_ai_attribution(message: str) -> bool:
+    return bool(AI_ATTRIBUTION.search(message))
+
+
+def test_no_ai_attribution_in_commit_messages():
+    out = subprocess.run(
+        ["git", "log", "--format=%h%x00%B%x1e"], cwd=ROOT, capture_output=True, check=True
+    ).stdout.decode("utf-8", errors="replace")
+    bad = []
+    for record in out.split("\x1e"):
+        sha, _, body = record.strip().partition("\x00")
+        if sha and find_ai_attribution(body):
+            bad.append(sha)
+    assert not bad, f"commits with AI attribution lines (reword them before pushing): {bad}"
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Fix x\n\nCo-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>",
+        "Fix x\n\nco-authored-by: Someone <noreply@anthropic.com>",
+        "Add y\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+    ],
+)
+def test_attribution_detector_catches_trailers(message):
+    assert find_ai_attribution(message)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Add the Claude-free parser",
+        "Fix x\n\nCo-authored-by: Manas Gupta <manas@example.com>",
+        "Mention claude code in the README",
+    ],
+)
+def test_attribution_detector_ignores_normal_messages(message):
+    assert not find_ai_attribution(message)
