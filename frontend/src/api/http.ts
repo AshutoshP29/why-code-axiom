@@ -2,6 +2,7 @@ import type {
   Answer,
   Entity,
   EntityMatch,
+  Evaluation,
   Explorer,
   Gap,
   Health,
@@ -34,13 +35,19 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     for (const [key, value] of Object.entries(params)) {
       if (value !== null) url.searchParams.set(key, value)
     }
-    const res = await fetchFn(url, {
-      method,
-      headers: body
-        ? { Accept: 'application/json', 'Content-Type': 'application/json' }
-        : { Accept: 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
-    })
+    let res: Response
+    try {
+      res = await fetchFn(url, {
+        method,
+        headers: body
+          ? { Accept: 'application/json', 'Content-Type': 'application/json' }
+          : { Accept: 'application/json' },
+        body: body ? JSON.stringify(body) : undefined,
+      })
+    } catch {
+      // fetch only throws when no response came back at all (server down, offline, CORS).
+      throw new ApiError(0, 'Could not reach the WhyCode API. Check that the backend is running.')
+    }
     if (!res.ok) throw new ApiError(res.status, await errorMessage(res))
     return (await res.json()) as T
   }
@@ -63,6 +70,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     getLineage: (repo, entityId, asOf) =>
       get<Lineage>('/lineage', { repo, entity_id: entityId, as_of: asOf }),
     getHealth: (repo) => get<Health>('/health', { repo }),
+    getEvaluation: (repo) => get<Evaluation>('/evaluation', { repo }),
     reingest: (repo) => post<Repo>('/repos/reingest', { repo }),
     flagGap: (repo, entityId, question) =>
       post<Gap>('/gaps', { repo, entity_id: entityId, question }),

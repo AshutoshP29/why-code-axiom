@@ -16,15 +16,16 @@
   --color-line-strong: #333c4a;
   --color-track: #2a313c; /* empty part of a bar */
 
+  /* Text greys meet WCAG AA (4.5:1) on every background here, tinted badges included. */
   --color-ink: #e8eaed;
-  --color-muted: #9aa3b2;
-  --color-faint: #6b7586;
+  --color-muted: #a7afbd;
+  --color-faint: #8f98aa;
 
   --color-teal: #2dd4bf;
   --color-teal-ink: #062824; /* text on teal buttons */
   --color-blue: #60a5fa;
   --color-amber: #f5a524;
-  --color-red: #f05252;
+  --color-red: #f26b6b;
   --color-green: #3fb950;
   --color-violet: #a78bfa;
   --color-gray: #8b93a1;
@@ -41,5 +42,10 @@
 
   :focus-visible {
     @apply outline-2 outline-offset-2 outline-teal;
+  }
+
+  /* The skip link moves focus to <main>; it needs no ring of its own. */
+  main:focus {
+    @apply outline-none;
   }
 }

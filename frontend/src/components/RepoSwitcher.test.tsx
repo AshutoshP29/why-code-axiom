@@ -29,7 +29,7 @@ describe('Repo switcher', () => {
     const panel = await openSwitcher(user)
     await user.click(within(panel).getByRole('button', { name: /pallets\/flask/ }))
 
-    expect(screen.getByRole('button', { name: 'Repository: pallets/flask. Switch repository' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Switch repository, current:\s*pallets\/flask/ })).toBeInTheDocument()
     expect(await screen.findByText('No reversed rules found yet.')).toBeInTheDocument()
   })
 

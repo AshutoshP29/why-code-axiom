@@ -1,22 +1,17 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { useHealth, useReingest } from '../api/queries'
-import type { EvalRow, Health } from '../api/types'
+import type { Health } from '../api/types'
 import { Dialog } from '../components/Dialog'
+import { EvalTable } from '../components/EvalTable'
 import { Badge, Button, Card, ErrorNotice, Loading, ProgressBar } from '../components/ui'
 import { entityLabel } from '../lib/entity'
-import { formatCount, formatDateTime, formatPct, plural } from '../lib/format'
+import { formatCount, formatDateTime, plural } from '../lib/format'
 import { useTitle } from '../lib/hooks'
 import { whyPath } from '../lib/routes'
 import { HEALTH_STAGE_TITLE, STATE_TONE } from '../lib/stages'
 import type { Tone } from '../lib/tones'
 import { useRepo } from '../state/repo-context'
-
-const SYSTEMS: { key: keyof Omit<EvalRow, 'metric'>; label: string; tone: Tone }[] = [
-  { key: 'llm_only', label: 'LLM only', tone: 'gray' },
-  { key: 'vector_rag', label: 'LLM + vector RAG', tone: 'blue' },
-  { key: 'whycode', label: 'WhyCode', tone: 'teal' },
-]
 
 const CONTENTS: { key: keyof Health['counts']; label: string; tone: Tone }[] = [
   { key: 'commits', label: 'Commit', tone: 'violet' },
@@ -70,7 +65,7 @@ export function HealthPage() {
         </div>
       </div>
 
-      <ol aria-label="Ingestion stages" className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <ol aria-label="Ingestion stages" className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {data.stages.map((s, i) => (
           <li key={s.stage}>
             <Card className="h-full p-4">
@@ -93,52 +88,18 @@ export function HealthPage() {
         ))}
       </ol>
 
-      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[1.45fr_1fr]">
+      <div className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-[1.45fr_1fr]">
         <Card className="p-5">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="font-semibold">Evaluation on {data.evaluation.question_count} labelled questions</h2>
             {!data.evaluation.measured && <Badge tone="amber">Placeholder values</Badge>}
           </div>
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-[11px] tracking-wider uppercase">
-                  <th scope="col" className="pb-2 font-semibold text-faint">
-                    Metric
-                  </th>
-                  {SYSTEMS.map((s) => (
-                    <th
-                      key={s.key}
-                      scope="col"
-                      className={`pb-2 pl-4 font-semibold ${s.key === 'whycode' ? 'text-teal' : 'text-faint'}`}
-                    >
-                      {s.label}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {data.evaluation.rows.map((row) => (
-                  <tr key={row.metric}>
-                    <th scope="row" className="py-2.5 pr-2 text-left font-normal text-muted">
-                      {row.metric}
-                    </th>
-                    {SYSTEMS.map((s) => {
-                      const v = row[s.key]
-                      return (
-                        <td key={s.key} className="min-w-28 py-2.5 pl-4">
-                          <span className={`text-xs ${s.key === 'whycode' ? 'font-semibold' : 'text-muted'}`}>
-                            {v === null ? '—' : formatPct(v)}
-                          </span>
-                          <ProgressBar value={v ?? 0} tone={s.tone} className="mt-1" />
-                        </td>
-                      )
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <EvalTable rows={data.evaluation.rows} />
           </div>
+          <Link to="/evaluation" className="mt-4 inline-block text-xs text-blue hover:underline">
+            See every question and result →
+          </Link>
         </Card>
 
         <div className="space-y-4">
@@ -146,12 +107,12 @@ export function HealthPage() {
             <h2 className="font-semibold">Graph contents</h2>
             <dl className="mt-3 space-y-3">
               {CONTENTS.map((c) => (
-                <div key={c.key}>
-                  <div className="flex justify-between text-xs">
-                    <dt className="text-muted">{c.label}</dt>
-                    <dd className="font-semibold">{formatCount(data.counts[c.key])}</dd>
-                  </div>
-                  <ProgressBar value={data.counts[c.key] / maxCount} tone={c.tone} className="mt-1" />
+                <div key={c.key} className="grid grid-cols-[1fr_auto] gap-y-1 text-xs">
+                  <dt className="text-muted">{c.label}</dt>
+                  <dd className="font-semibold">{formatCount(data.counts[c.key])}</dd>
+                  <dd className="col-span-2">
+                    <ProgressBar value={data.counts[c.key] / maxCount} tone={c.tone} />
+                  </dd>
                 </div>
               ))}
             </dl>

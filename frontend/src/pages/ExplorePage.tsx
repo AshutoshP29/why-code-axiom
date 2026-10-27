@@ -43,7 +43,7 @@ export function ExplorePage() {
   const file = files.find((f) => f.entity.id === params.get('file')) ?? files[0]
 
   return (
-    <div className="grid flex-1 lg:grid-cols-[232px_minmax(0,1fr)]">
+    <div className="grid flex-1 grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)]">
       <aside className="hidden border-r border-line bg-chrome lg:block">
         <ExplorerPanel activeFileId={file?.entity.id ?? null} />
       </aside>

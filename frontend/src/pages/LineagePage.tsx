@@ -3,6 +3,7 @@ import { Link, Navigate, useSearchParams } from 'react-router'
 import { useLineage } from '../api/queries'
 import type { EntityKind, SupersedeKind } from '../api/types'
 import { Breadcrumb } from '../components/answer-parts'
+import { SegmentedControl } from '../components/SegmentedControl'
 import { Badge, ErrorNotice, Loading, Meta, SourceLink } from '../components/ui'
 import { defaultQuestion, entityCrumbs, entityLabel } from '../lib/entity'
 import { formatMonth } from '../lib/format'
@@ -13,7 +14,8 @@ import { cx, type Tone } from '../lib/tones'
 import { useRepo } from '../state/repo-context'
 
 const STATUS: Record<ViewStatus, { label: string; tone: Tone; card: string }> = {
-  superseded: { label: 'Superseded', tone: 'amber', card: 'border-amber/40 opacity-75' },
+  // Dimmed with colour, not opacity, so its text still meets contrast rules.
+  superseded: { label: 'Superseded', tone: 'amber', card: 'border-amber/40 bg-sunken' },
   partial: { label: 'Partial', tone: 'blue', card: 'border-blue/40' },
   active: { label: 'Active', tone: 'teal', card: 'border-teal/40' },
 }
@@ -51,7 +53,9 @@ export function LineagePage() {
   const cardById = new Map(cards.map((c) => [c.decision.id, c]))
   const setYear = (y: number | null) =>
     setParams(y === null ? { entity: entityId } : { entity: entityId, asof: String(y) }, { replace: true })
-  const options: (number | null)[] = [...lineage.as_of_years, null]
+  // A year typed into the URL that is not offered still shows as the selected choice.
+  const years = [...new Set([...lineage.as_of_years, ...(year === null ? [] : [year])])].sort((a, b) => a - b)
+  const options: (number | null)[] = [...years, null]
   const askPath = whyPath(entityId, defaultQuestion(lineage.entity))
 
   return (
@@ -66,27 +70,12 @@ export function LineagePage() {
             <span id="asof-label" className="text-xs text-faint">
               View as of
             </span>
-            <div
-              role="radiogroup"
-              aria-labelledby="asof-label"
-              className="flex rounded-lg border border-line bg-surface p-1"
-            >
-              {options.map((y) => (
-                <button
-                  key={y ?? 'today'}
-                  type="button"
-                  role="radio"
-                  aria-checked={year === y}
-                  onClick={() => setYear(y)}
-                  className={cx(
-                    'rounded-md px-3 py-1 text-sm',
-                    year === y ? 'border border-teal/40 bg-teal/10 font-semibold text-teal' : 'text-muted hover:text-ink',
-                  )}
-                >
-                  {y ?? 'Today'}
-                </button>
-              ))}
-            </div>
+            <SegmentedControl
+              labelledBy="asof-label"
+              options={options.map((y) => ({ value: y, label: y === null ? 'Today' : String(y) }))}
+              value={year}
+              onChange={setYear}
+            />
           </div>
         )}
       </div>
@@ -98,7 +87,7 @@ export function LineagePage() {
       {cards.length === 0 ? (
         <p className="mt-8 text-sm text-muted">
           No decisions are recorded for this item{year ? ` as of ${year}` : ''}.{' '}
-          <Link to={askPath} className="text-blue hover:underline">
+          <Link to={askPath} className="text-blue underline underline-offset-2">
             Ask why anyway →
           </Link>
         </p>

@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { ApiContext, type ApiContextValue } from './api/context'
 import { Layout } from './components/Layout'
+import { EvaluationPage } from './pages/EvaluationPage'
 import { ExplorePage } from './pages/ExplorePage'
 import { HealthPage } from './pages/HealthPage'
 import { HomePage } from './pages/HomePage'
@@ -42,6 +43,7 @@ export function AppRoutes() {
         <Route path="why" element={<WhyPage />} />
         <Route path="lineage" element={<LineagePage />} />
         <Route path="health" element={<HealthPage />} />
+        <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="explore" element={<ExplorePage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>

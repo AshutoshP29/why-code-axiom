@@ -57,7 +57,7 @@ export function SupersededBanner({ note, entityId }: { note: SupersededNote; ent
         <p className="mt-1 text-muted">
           The older rule, {lowerFirst(old.summary)} ({old.source.label}, {formatMonthYear(old.decided_at)}), is shown
           as history only and is not used as current guidance.{' '}
-          <Link to={lineagePath(entityId)} className="text-blue hover:underline">
+          <Link to={lineagePath(entityId)} className="text-blue underline underline-offset-2">
             See the full history →
           </Link>
         </p>

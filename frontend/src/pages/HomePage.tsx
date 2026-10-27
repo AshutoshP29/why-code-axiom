@@ -24,16 +24,15 @@ const OUTCOME: Record<ShowcaseOutcome, { label: string; tone: Tone }> = {
   refused: { label: 'Refused', tone: 'red' },
 }
 
-function HomeContent({ repoId, partial }: { repoId: string; partial: boolean }) {
+function HomeContent({ repoId, partialNote }: { repoId: string; partialNote: string | null }) {
   const { data, error, refetch } = useOverview(repoId)
   const maxReversals = Math.max(1, ...(data?.hotspots.map((h) => h.reversals) ?? []))
 
   return (
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
-      {partial && (
+      {partialNote && (
         <p className="mb-6 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 text-sm text-muted">
-          Partial history: {repoId} is still being read, so answers may miss older decisions and will show a lower
-          confidence.
+          Partial history: {partialNote}, so answers may miss older decisions and will show a lower confidence.
         </p>
       )}
 
@@ -78,7 +77,7 @@ function HomeContent({ repoId, partial }: { repoId: string; partial: boolean }) 
             ))}
           </section>
 
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1.45fr_1fr]">
+          <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
             <Card>
               <div className="flex flex-wrap items-baseline gap-2 border-b border-line px-5 py-4">
                 <h2 className="font-semibold">Hotspots</h2>
@@ -93,7 +92,6 @@ function HomeContent({ repoId, partial }: { repoId: string; partial: boolean }) 
                       <Link
                         to={lineagePath(h.entity.id)}
                         className="flex items-center gap-4 px-5 py-3 hover:bg-raised"
-                        aria-label={`${entityLabel(h.entity)}: ${plural(h.reversals, 'reversal')}. View decision history`}
                       >
                         <span className="min-w-0 flex-1 truncate font-mono text-sm text-blue">
                           {entityLabel(h.entity)}
@@ -103,6 +101,7 @@ function HomeContent({ repoId, partial }: { repoId: string; partial: boolean }) 
                         <span aria-hidden className="text-faint">
                           →
                         </span>
+                        <span className="sr-only">, view decision history</span>
                       </Link>
                     </li>
                   ))}
@@ -142,7 +141,12 @@ export function HomePage() {
   const { repo, partialAllowed } = useRepo()
   useTitle('Why is the code like this?')
   if (!repo) return null
-  const busy = repo.status === 'QUEUED' || repo.status === 'INGESTING'
-  if (busy && !partialAllowed(repo.id)) return <IngestionView repoId={repo.id} />
-  return <HomeContent repoId={repo.id} partial={repo.partial} />
+  const unfinished = repo.status === 'QUEUED' || repo.status === 'INGESTING' || repo.status === 'ERROR'
+  if (unfinished && !partialAllowed(repo.id)) return <IngestionView repoId={repo.id} />
+  const note = !repo.partial
+    ? null
+    : repo.status === 'ERROR'
+      ? `reading ${repo.id} stopped before it finished`
+      : `${repo.id} is still being read`
+  return <HomeContent repoId={repo.id} partialNote={note} />
 }

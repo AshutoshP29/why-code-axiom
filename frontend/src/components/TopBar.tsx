@@ -25,11 +25,12 @@ const HISTORY_PROMPT: Record<EntityKind, string> = {
 
 function Logo() {
   return (
-    <Link to="/" className="flex shrink-0 items-center gap-2 font-semibold" aria-label="WhyCode home">
+    <Link to="/" className="flex shrink-0 items-center gap-2 font-semibold">
       <span aria-hidden className="grid size-7 place-items-center rounded-md bg-teal text-sm font-bold text-teal-ink">
         W
       </span>
-      <span className="hidden sm:inline">WhyCode</span>
+      {/* Always named "WhyCode" for screen readers, shown from small screens up. */}
+      <span className="sr-only sm:not-sr-only">WhyCode</span>
     </Link>
   )
 }

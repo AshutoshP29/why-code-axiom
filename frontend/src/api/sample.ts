@@ -6,6 +6,7 @@ import type {
   AnsweredAnswer,
   Decision,
   Entity,
+  Evaluation,
   Explorer,
   ExplorerItem,
   GraphEdge,
@@ -142,6 +143,7 @@ export function sampleRepos(now: number): Repo[] {
       stage: null,
       progress_pct: 100,
       partial: false,
+      error: null,
       last_synced_at: minutesAgo(now, 10),
       commits_count: 6495,
       decisions_count: 2140,
@@ -152,6 +154,7 @@ export function sampleRepos(now: number): Repo[] {
       stage: null,
       progress_pct: 100,
       partial: false,
+      error: null,
       last_synced_at: minutesAgo(now, 120),
       commits_count: 5400,
       decisions_count: 1600,
@@ -162,6 +165,7 @@ export function sampleRepos(now: number): Repo[] {
       stage: 'extract',
       progress_pct: 62,
       partial: true,
+      error: null,
       last_synced_at: null,
       commits_count: 2900,
       decisions_count: 430,
@@ -179,6 +183,17 @@ export function sampleStages(repo: Repo): StageProgress[] {
       { stage: 'supersession', state: 'queued', progress_pct: 0, headline: 'not started', detail: 'starts when reading finishes' },
     ]
   }
+  if (repo.status === 'ERROR') {
+    // Stages before the failed one finished; the failed one shows the error; the rest never ran.
+    const failedAt = STAGE_KEYS.indexOf(repo.stage ?? 'fetch')
+    return queuedStages().map((s, i) =>
+      i < failedAt
+        ? { ...s, state: 'done', progress_pct: 100, headline: 'done' }
+        : i === failedAt
+          ? { ...s, state: 'error', headline: 'stopped', detail: repo.error ?? 'stopped with an error' }
+          : s,
+    )
+  }
   if (repo.status === 'READY') {
     return [
       { stage: 'fetch', state: 'done', progress_pct: 100, headline: '1,236 PRs', detail: 'commits, PRs, issues, docs' },
@@ -188,14 +203,27 @@ export function sampleStages(repo: Repo): StageProgress[] {
       { stage: 'supersession', state: 'done', progress_pct: 100, headline: '312 found', detail: 'reverts, later overrides' },
     ]
   }
-  // A repo added during this session: everything starts queued.
-  return [
-    { stage: 'fetch', state: 'running', progress_pct: 5, headline: 'starting', detail: 'downloading commits, pull requests and issues' },
-    { stage: 'parse', state: 'queued', progress_pct: 0, headline: 'not started', detail: 'files, functions and settings' },
-    { stage: 'link', state: 'queued', progress_pct: 0, headline: 'not started', detail: 'commits to PRs, PRs to issues' },
-    { stage: 'extract', state: 'queued', progress_pct: 0, headline: 'not started', detail: 'reading discussions with AI' },
-    { stage: 'supersession', state: 'queued', progress_pct: 0, headline: 'not started', detail: 'starts when reading finishes' },
-  ]
+  return queuedStages()
+}
+
+const STAGE_KEYS: StageProgress['stage'][] = ['fetch', 'parse', 'link', 'extract', 'supersession']
+
+/** Every stage waiting to run, as for a repo just added. */
+function queuedStages(): StageProgress[] {
+  const detail: Record<StageProgress['stage'], string> = {
+    fetch: 'downloading commits, pull requests and issues',
+    parse: 'files, functions and settings',
+    link: 'commits to PRs, PRs to issues',
+    extract: 'reading discussions with AI',
+    supersession: 'starts when reading finishes',
+  }
+  return STAGE_KEYS.map((stage) => ({
+    stage,
+    state: 'queued',
+    progress_pct: 0,
+    headline: 'not started',
+    detail: detail[stage],
+  }))
 }
 
 export function sampleIngestion(repo: Repo): Ingestion {
@@ -756,6 +784,28 @@ export const HEALTH: Health = {
       { metric: 'Answers with evidence links', llm_only: 0.2, vector_rag: 0.55, whycode: 1 },
     ],
   },
+}
+
+// ---------- evaluation ----------
+
+const notRun = { llm_only: null, vector_rag: null, whycode: null }
+
+/**
+ * Sample labelled questions, consistent with the sample answers above. The real set of 40, with
+ * known right answers, is written by the team; until it has been run every result is null.
+ */
+export const EVALUATION: Evaluation = {
+  ...HEALTH.evaluation,
+  questions: [
+    { id: 'q01', question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?', entity: E.rebuildAuth, expected: 'answered', results: notRun },
+    { id: 'q02', question: 'Why is max_retries off by default?', entity: E.maxRetries, expected: 'superseded', results: notRun },
+    { id: 'q03', question: 'Why is verify=True the default?', entity: E.verify, expected: 'answered', results: notRun },
+    { id: 'q04', question: 'Why is HTTPAdapter.pool_maxsize 10 by default?', entity: E.poolMaxsize, expected: 'refused', results: notRun },
+    { id: 'q05', question: 'What was the retry rule in 2013?', entity: E.maxRetries, expected: 'superseded', results: notRun },
+    { id: 'q06', question: 'Why does trust_env read proxy settings from the environment?', entity: E.trustEnv, expected: 'refused', results: notRun },
+    { id: 'q07', question: 'Why is .netrc read when no auth is passed?', entity: E.netrc, expected: 'refused', results: notRun },
+    { id: 'q08', question: 'Why does iter_content default to a chunk size of 1?', entity: E.iterContent, expected: 'refused', results: notRun },
+  ],
 }
 
 /** Overview for a sample repo other than psf/requests: real-looking counts, no content yet. */

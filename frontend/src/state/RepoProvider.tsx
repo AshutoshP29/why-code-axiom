@@ -24,7 +24,11 @@ function writeStored(repoId: string) {
 const addTo = (set: ReadonlySet<string>, value: string) => new Set(set).add(value)
 
 export function RepoProvider({ children }: { children: ReactNode }) {
-  const { data: repos = [], isPending, error } = useRepos()
+  const { data, isPending, isFetching, error, refetch } = useRepos()
+  const repos = useMemo(() => data ?? [], [data])
+  // Only a list that never loaded is an error worth a full-page message; a failed background
+  // refresh keeps showing the list we have.
+  const loadError = data === undefined ? error : null
   const [chosen, setChosen] = useState<string | null>(readStored)
   const [partial, setPartial] = useState<ReadonlySet<string>>(() => new Set())
   const [watched, setWatched] = useState<ReadonlySet<string>>(() => new Set())
@@ -70,15 +74,17 @@ export function RepoProvider({ children }: { children: ReactNode }) {
     () => ({
       repos,
       repo,
-      loading: isPending,
-      error,
+      // While a retry is running after a failure, show loading rather than the old error.
+      loading: isPending || (loadError !== null && isFetching),
+      error: loadError,
+      retry: () => void refetch(),
       selectRepo,
       partialAllowed: (repoId) => partial.has(repoId),
       allowPartial,
       notifying: (repoId) => watched.has(repoId) && !repos.some((r) => r.id === repoId && r.status === 'READY'),
       notifyWhenReady,
     }),
-    [repos, repo, isPending, error, selectRepo, partial, allowPartial, watched, notifyWhenReady],
+    [repos, repo, isPending, isFetching, loadError, refetch, selectRepo, partial, allowPartial, watched, notifyWhenReady],
   )
 
   return <RepoContext value={value}>{children}</RepoContext>

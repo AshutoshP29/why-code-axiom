@@ -22,7 +22,7 @@ function NoRepos() {
 export function Layout() {
   const { pathname } = useLocation()
   const [params] = useSearchParams()
-  const { repo, loading, error } = useRepo()
+  const { repo, loading, error, retry } = useRepo()
 
   // Answer pages swap the nav for an ask bar holding the current question, as in the designs.
   const entityId = params.get('entity')
@@ -42,11 +42,11 @@ export function Layout() {
         Skip to content
       </a>
       <TopBar ask={repo ? ask : null} />
-      <main id="main" className="flex flex-1 flex-col">
+      <main id="main" tabIndex={-1} className="flex flex-1 flex-col">
         {loading ? (
           <Loading label="Loading repositories" />
         ) : error ? (
-          <ErrorNotice error={error} />
+          <ErrorNotice error={error} onRetry={retry} />
         ) : !repo ? (
           <NoRepos />
         ) : (

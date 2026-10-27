@@ -13,7 +13,7 @@ describe('Home', () => {
     for (const value of ['2,140', '312', '9,860', '14.2k']) {
       expect(within(summary).getByText(value)).toBeInTheDocument()
     }
-    expect(screen.getByRole('link', { name: /max_retries: 4 reversals/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /max_retries\s*4 reversals/ })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Why is pool_maxsize 10?' })).toBeInTheDocument()
     expect(screen.getByText('Sample data')).toBeInTheDocument()
   })
@@ -51,7 +51,7 @@ describe('Home', () => {
   it('opens the decision history from a hotspot', async () => {
     const user = userEvent.setup()
     renderApp('/')
-    await user.click(await screen.findByRole('link', { name: /max_retries: 4 reversals/ }))
+    await user.click(await screen.findByRole('link', { name: /max_retries\s*4 reversals/ }))
     expect(currentLocation()).toBe(`/lineage?entity=${E.maxRetries.id}`)
     expect(await screen.findByRole('heading', { name: 'Decision history: max_retries' })).toBeInTheDocument()
   })

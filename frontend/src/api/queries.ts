@@ -92,6 +92,14 @@ export function useHealth(repo: string | null) {
   })
 }
 
+export function useEvaluation(repo: string | null) {
+  const { api } = useApi()
+  return useQuery({
+    queryKey: ['evaluation', repo],
+    queryFn: repo ? () => api.getEvaluation(repo) : skipToken,
+  })
+}
+
 export function useCheckRepo() {
   const { api } = useApi()
   return useMutation({ mutationFn: (input: string) => api.checkRepo(input) })

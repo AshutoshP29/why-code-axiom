@@ -12,6 +12,7 @@ export interface Repo {
   stage: Stage | null // current stage while ingesting
   progress_pct: number // overall ingestion progress
   partial: boolean // true while ingestion is unfinished; answers say "partial history"
+  error: string | null // why ingestion stopped, when status is ERROR; shown to the user
   last_synced_at: string | null
   commits_count: number
   decisions_count: number
@@ -256,6 +257,35 @@ export interface EvalRow {
   whycode: number | null
 }
 
+export interface EvaluationSummary {
+  question_count: number // the size of the labelled set (40)
+  measured: boolean // false = the numbers are placeholders
+  rows: EvalRow[]
+}
+
+export type EvalSystem = 'llm_only' | 'vector_rag' | 'whycode'
+
+/** What the right response to a labelled question is. */
+export type ExpectedOutcome = 'answered' | 'superseded' | 'refused'
+
+export interface EvalResult {
+  outcome: ExpectedOutcome // what the system actually did
+  correct: boolean
+  cited_source: boolean
+}
+
+export interface EvalQuestion {
+  id: string // "q01"
+  question: string
+  entity: Entity | null
+  expected: ExpectedOutcome
+  results: Record<EvalSystem, EvalResult | null> // null = not run yet
+}
+
+export interface Evaluation extends EvaluationSummary {
+  questions: EvalQuestion[] // the questions written so far
+}
+
 export interface Health {
   last_ingest_at: string | null
   stages: StageProgress[]
@@ -268,11 +298,7 @@ export interface Health {
     people: number
   }
   gap_queue: Gap[]
-  evaluation: {
-    question_count: number
-    measured: boolean // false = the numbers are placeholders
-    rows: EvalRow[]
-  }
+  evaluation: EvaluationSummary
 }
 
 export interface WhyCodeApi {
@@ -288,6 +314,7 @@ export interface WhyCodeApi {
   ask(repo: string, entityId: string, question: string): Promise<Answer>
   getLineage(repo: string, entityId: string, asOf: string | null): Promise<Lineage>
   getHealth(repo: string): Promise<Health>
+  getEvaluation(repo: string): Promise<Evaluation>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
 }

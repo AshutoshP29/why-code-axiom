@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Link } from 'react-router'
 import { useFlagGap } from '../api/queries'
 import type { EntityKind, Person, RefusedAnswer } from '../api/types'
@@ -22,9 +22,20 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
   const [asking, setAsking] = useState<Person | null>(null)
   const flag = useFlagGap(repoId)
   const owner = answer.who_to_ask[0] ?? null
+  // A double-click lands before the button re-renders as disabled; this stops the second flag.
+  const flagSent = useRef(false)
+
+  function sendFlag() {
+    if (flagSent.current) return
+    flagSent.current = true
+    flag.mutate(
+      { entityId: answer.entity.id, question: answer.question },
+      { onError: () => (flagSent.current = false) },
+    )
+  }
 
   return (
-    <div className="grid flex-1 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="grid flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_300px]">
       <article className="min-w-0 px-4 py-6 sm:px-8 lg:px-12">
         <Breadcrumb parts={entityCrumbs(answer.entity)} />
         <h1 className="mt-2 text-2xl leading-snug font-semibold">{answer.question}</h1>
@@ -107,10 +118,7 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
             </Button>
           )}
           <ExternalButton href={answer.history_url}>Open commit history</ExternalButton>
-          <Button
-            disabled={flag.isPending || flag.isSuccess}
-            onClick={() => flag.mutate({ entityId: answer.entity.id, question: answer.question })}
-          >
+          <Button disabled={flag.isPending || flag.isSuccess} onClick={sendFlag}>
             {flag.isSuccess ? 'Flagged' : flag.isPending ? 'Flagging…' : 'Flag as missing context'}
           </Button>
         </div>
@@ -118,7 +126,7 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
           {flag.isSuccess && (
             <span className="text-muted">
               Added to the gap queue on{' '}
-              <Link to="/health" className="text-blue hover:underline">
+              <Link to="/health" className="text-blue underline underline-offset-2">
                 Graph health
               </Link>
               .

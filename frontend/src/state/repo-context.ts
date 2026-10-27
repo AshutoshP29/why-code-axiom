@@ -7,6 +7,8 @@ export interface RepoContextValue {
   repo: Repo | null
   loading: boolean
   error: Error | null
+  /** Load the repository list again after it failed. */
+  retry: () => void
   selectRepo: (repoId: string) => void
   /** Repos the user chose to ask about before ingestion finished ("Ask now (partial history)"). */
   partialAllowed: (repoId: string) => boolean

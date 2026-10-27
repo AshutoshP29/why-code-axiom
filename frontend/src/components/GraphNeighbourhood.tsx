@@ -11,7 +11,7 @@ const COLOR = {
   teal: '#2dd4bf',
   amber: '#f5a524',
   violet: '#a78bfa',
-  red: '#f05252',
+  red: '#f26b6b',
   blue: '#60a5fa',
   gray: '#8b93a1',
   green: '#3fb950',

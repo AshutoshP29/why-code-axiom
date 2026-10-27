@@ -20,6 +20,14 @@ const STATUS_TONE: Record<RepoStatus, Tone> = {
 const isBusy = (r: Repo) => r.status === 'INGESTING' || r.status === 'QUEUED'
 
 function RepoMeta({ repo, now }: { repo: Repo; now: number }) {
+  if (repo.status === 'ERROR') {
+    return (
+      <span className="text-xs text-red">
+        Stopped{repo.stage ? ` at ${stageSummary(repo.stage).toLowerCase()}` : ''}
+        {repo.error ? `: ${repo.error}` : ''}
+      </span>
+    )
+  }
   if (isBusy(repo)) {
     return (
       <>
@@ -47,6 +55,7 @@ export function RepoSwitcher() {
   const [filter, setFilter] = useState('')
   const [adding, setAdding] = useState<string | null>(null) // input to prefill, or null when closed
   const rootRef = useRef<HTMLDivElement>(null)
+  const buttonRef = useRef<HTMLButtonElement>(null)
   useDismiss(rootRef, open, () => setOpen(false))
 
   const q = filter.trim().toLowerCase()
@@ -69,21 +78,24 @@ export function RepoSwitcher() {
   return (
     <div ref={rootRef} className="relative">
       <button
+        ref={buttonRef}
         type="button"
         aria-haspopup="dialog"
         aria-expanded={open}
-        aria-label={repo ? `Repository: ${repo.id}. Switch repository` : 'Choose a repository'}
         onClick={() => setOpen((o) => !o)}
         className={cx(
           'flex items-center gap-2 rounded-lg border px-2.5 py-1.5 text-sm whitespace-nowrap hover:border-line-strong',
           open ? 'border-teal/60' : 'border-line bg-surface',
         )}
       >
+        {/* Spoken as "Switch repository, current: psf/requests"; the visible name stays part of it. */}
+        <span className="sr-only">Switch repository, current: </span>
         {repo ? (
           <>
             <Dot tone={STATUS_TONE[repo.status]} />
             <span className="max-w-40 truncate">{repo.id}</span>
             {isBusy(repo) && <Badge tone="blue">Ingesting {repo.progress_pct}%</Badge>}
+            {repo.status === 'ERROR' && <Badge tone="red">Stopped</Badge>}
           </>
         ) : (
           <span className="text-muted">No repository</span>
@@ -97,6 +109,12 @@ export function RepoSwitcher() {
         <div
           role="dialog"
           aria-label="Your repositories"
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setOpen(false)
+              buttonRef.current?.focus()
+            }
+          }}
           className="absolute top-full left-0 z-40 mt-2 w-[min(24rem,90vw)] rounded-xl border border-line bg-surface p-3 shadow-2xl"
         >
           <SectionLabel>Your repositories</SectionLabel>

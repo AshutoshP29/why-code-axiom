@@ -9,6 +9,7 @@ import {
   EXPLORER,
   emptyOverview,
   ENTITIES,
+  EVALUATION,
   genericRefusal,
   HEALTH,
   LINEAGES,
@@ -74,6 +75,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
         stage: STAGES[Math.min(4, Math.floor(pct / 20))],
         progress_pct: pct,
         partial: true,
+        error: null,
       })
     }
     return repo
@@ -176,6 +178,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
         stage: 'fetch',
         progress_pct: 0,
         partial: true,
+        error: null,
         last_synced_at: null,
         commits_count: estimate(repoId).commits,
         decisions_count: 0,
@@ -264,6 +267,12 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
     async getHealth(repoId) {
       await wait()
       return copy(healthFor(findRepo(repoId)))
+    },
+
+    async getEvaluation(repoId) {
+      await wait()
+      const repo = findRepo(repoId)
+      return copy(repoId === SAMPLE_REPO ? EVALUATION : { ...healthFor(repo).evaluation, questions: [] })
     },
 
     async reingest(repoId) {

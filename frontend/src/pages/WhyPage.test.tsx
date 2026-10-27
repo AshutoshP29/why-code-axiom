@@ -36,8 +36,8 @@ describe('Why Workspace', () => {
 
   it('marks who is still around', async () => {
     renderApp(whyPath(E.rebuildAuth.id, 'q'))
-    const a = await screen.findByRole('button', { name: 'Ask @maintainer_a' })
-    const b = screen.getByRole('button', { name: 'Ask @maintainer_b' })
+    const a = await screen.findByRole('button', { name: /^Ask\s*@maintainer_a/ })
+    const b = screen.getByRole('button', { name: /^Ask\s*@maintainer_b/ })
     expect(a).toHaveTextContent('Active')
     expect(b).toHaveTextContent('Inactive')
     expect(b).toHaveTextContent('Reviewed it, last seen 2021')
@@ -46,7 +46,7 @@ describe('Why Workspace', () => {
   it('writes a message for the maintainer', async () => {
     const user = userEvent.setup()
     renderApp(whyPath(E.rebuildAuth.id, 'q'))
-    await user.click(await screen.findByRole('button', { name: 'Ask @maintainer_a' }))
+    await user.click(await screen.findByRole('button', { name: /^Ask\s*@maintainer_a/ }))
 
     const dialog = screen.getByRole('dialog', { name: 'Ask @maintainer_a' })
     const message = within(dialog).getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })

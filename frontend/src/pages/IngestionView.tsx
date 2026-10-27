@@ -1,26 +1,40 @@
 import { useState } from 'react'
-import { useIngestion } from '../api/queries'
+import { useIngestion, useReingest } from '../api/queries'
 import { Badge, Button, ErrorNotice, Loading, ProgressBar } from '../components/ui'
 import { INGEST_STAGE_TITLE, STATE_TONE } from '../lib/stages'
 import { BADGE_TONE, cx } from '../lib/tones'
 import { useRepo } from '../state/repo-context'
 
-/** "Reading owner/name": shown on Home while the selected repo is still being ingested. */
+/**
+ * "Reading owner/name": shown on Home while the selected repo is still being ingested,
+ * or after ingestion stopped with an error.
+ */
 export function IngestionView({ repoId }: { repoId: string }) {
   const { allowPartial, notifying, notifyWhenReady } = useRepo()
   const { data, error, refetch } = useIngestion(repoId)
+  const reingest = useReingest()
   const [blocked, setBlocked] = useState(false)
 
   if (error) return <ErrorNotice error={error} onRetry={() => refetch()} />
   if (!data) return <Loading label="Checking progress" />
+  const stopped = data.repo.status === 'ERROR'
 
   return (
     <div className="flex flex-1 items-start justify-center px-4 py-12">
       <section className="w-full max-w-2xl rounded-2xl border border-line bg-surface p-6">
-        <h1 className="text-xl font-semibold">Reading {repoId}</h1>
+        <h1 className="text-xl font-semibold">
+          {stopped ? `Reading ${repoId} stopped` : `Reading ${repoId}`}
+        </h1>
         <p className="mt-1 text-sm text-muted">
-          You can start asking now. Answers will say “partial history” until reading finishes.
+          {stopped
+            ? 'You can run it again, or ask about what was read before it stopped.'
+            : 'You can start asking now. Answers will say “partial history” until reading finishes.'}
         </p>
+        {stopped && data.repo.error && (
+          <p role="alert" className="mt-3 rounded-lg border border-red/40 bg-red/10 px-3 py-2 text-sm">
+            {data.repo.error}
+          </p>
+        )}
 
         <ol className="mt-5 space-y-2">
           {data.stages.map((s, i) => {
@@ -43,7 +57,7 @@ export function IngestionView({ repoId }: { repoId: string }) {
                   label={`${INGEST_STAGE_TITLE[s.stage]} progress`}
                   className="hidden w-40 sm:block"
                 />
-                <Badge tone={tone}>{s.state}</Badge>
+                <Badge tone={tone}>{s.state === 'error' ? 'stopped' : s.state}</Badge>
               </li>
             )
           })}
@@ -54,20 +68,30 @@ export function IngestionView({ repoId }: { repoId: string }) {
         </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
-          <Button variant="primary" onClick={() => allowPartial(repoId)}>
-            Ask now (partial history)
-          </Button>
-          <Button
-            disabled={notifying(repoId)}
-            onClick={async () => setBlocked(!(await notifyWhenReady(repoId)))}
-          >
-            {notifying(repoId) ? 'We will notify you' : 'Notify me when ready'}
-          </Button>
-          {blocked && (
-            <span role="alert" className="text-xs text-muted">
-              Notifications are blocked in this browser. Check back here instead.
-            </span>
+          {stopped ? (
+            <>
+              <Button variant="primary" disabled={reingest.isPending} onClick={() => reingest.mutate(repoId)}>
+                {reingest.isPending ? 'Starting…' : 'Run it again'}
+              </Button>
+              <Button onClick={() => allowPartial(repoId)}>Ask about what was read</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="primary" onClick={() => allowPartial(repoId)}>
+                Ask now (partial history)
+              </Button>
+              <Button
+                disabled={notifying(repoId)}
+                onClick={async () => setBlocked(!(await notifyWhenReady(repoId)))}
+              >
+                {notifying(repoId) ? 'We will notify you' : 'Notify me when ready'}
+              </Button>
+            </>
           )}
+          <span aria-live="polite" className="text-xs">
+            {blocked && <span className="text-muted">Notifications are blocked in this browser. Check back here instead.</span>}
+            {reingest.error && <span className="text-red">{reingest.error.message}</span>}
+          </span>
         </div>
       </section>
     </div>
