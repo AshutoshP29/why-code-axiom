@@ -6,9 +6,12 @@ export const ID = {
   resolveRedirects: 'psf/requests#fn:src/requests/sessions.py::Session.resolve_redirects',
   maxRetries: 'psf/requests#cfg:max_retries',
   poolMaxsize: 'psf/requests#cfg:pool_maxsize',
+  timeout: 'psf/requests#cfg:timeout', // the hedged sample
 }
 
-export const why = (entityId: string, q: string) => `/why?${new URLSearchParams({ entity: entityId, q })}`
+/** entityId null: a plain question, as typed with nothing picked. */
+export const why = (entityId: string | null, q: string) =>
+  `/why?${new URLSearchParams(entityId ? { entity: entityId, q } : { q })}`
 export const lineage = (entityId: string, asof?: number) =>
   `/lineage?${new URLSearchParams(asof ? { entity: entityId, asof: String(asof) } : { entity: entityId })}`
 

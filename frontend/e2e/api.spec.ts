@@ -38,7 +38,8 @@ function dispatch(api: WhyCodeApi, { method, path, params: q, body }: Call): Pro
   }
 }
 
-async function fakeBackend(page: Page, fault: Fault = () => null) {
+/** `edit` changes a successful response before it is sent, to play a backend with other settings. */
+async function fakeBackend(page: Page, fault: Fault = () => null, edit: (call: Call, data: unknown) => unknown = (_, d) => d) {
   const api = createMockApi({ delayMs: 0 })
   const calls: Call[] = []
   // Only the API: the dev server also serves source files under /src/api/.
@@ -57,7 +58,7 @@ async function fakeBackend(page: Page, fault: Fault = () => null) {
     if (typeof f === 'number') await new Promise((r) => setTimeout(r, f))
     else if (f) return route.fulfill({ status: f.status, json: { detail: f.detail } })
     try {
-      await route.fulfill({ json: await dispatch(api, call) })
+      await route.fulfill({ json: edit(call, await dispatch(api, call)) })
     } catch (e) {
       if (!(e instanceof ApiError)) throw e
       await route.fulfill({ status: e.status, json: { detail: e.message } })
@@ -84,6 +85,27 @@ test('Talks to the API: no sample badge, and requests carry the repo and graph i
   const scoped = calls.filter((c) => c.method === 'GET' && c.path !== '/repos')
   expect(scoped.length).toBeGreaterThan(0)
   for (const c of scoped) expect(c.params.repo, `${c.path} must say which repo`).toBe('psf/requests')
+})
+
+test('A plain question sends entity_id: null, and the page shows what the API matched', async ({ page }) => {
+  const calls = await fakeBackend(page)
+  await page.goto(why(null, 'why does rebuild_auth strip the header?'))
+  await expect(page.getByText(/^Matched to/)).toContainText('Session.rebuild_auth (score 0.90)')
+  expect(calls).toContainEqual({
+    method: 'POST',
+    path: '/ask',
+    params: {},
+    body: { repo: 'psf/requests', entity_id: null, question: 'why does rebuild_auth strip the header?' },
+  })
+})
+
+test('A hedged answer shows its warning and the thresholds the API sent', async ({ page }) => {
+  await fakeBackend(page, undefined, (call, data) =>
+    call.path === '/ask' ? { ...(data as object), thresholds: { answer: 0.8, refuse: 0.5 } } : data,
+  )
+  await page.goto(why(ID.timeout, 'q'))
+  await expect(page.getByRole('region', { name: 'Low confidence: check before relying on this' })).toBeVisible()
+  await expect(page.getByText('Refuses below 50% · warns below 80%')).toBeVisible()
 })
 
 test.describe('when the backend fails', () => {

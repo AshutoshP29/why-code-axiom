@@ -30,6 +30,39 @@ test('A blank question falls back to the default question', async ({ page }) => 
   expect(new URL(page.url()).searchParams.get('q')).toBe('Why is verify like this?')
 })
 
+test('A blank question with nothing picked cannot be sent', async ({ page }) => {
+  await page.goto('/')
+  const ask = page.getByRole('search', { name: 'Ask why' })
+  await ask.getByRole('textbox', { name: 'Your question' }).fill('    ')
+  await expect(ask.getByRole('button', { name: 'Trace' })).toBeDisabled()
+  await ask.getByRole('textbox', { name: 'Your question' }).press('Enter')
+  await expect(page).toHaveURL(/\/$/)
+})
+
+test('Clearing a picked entity sends the question on its own', async ({ page }) => {
+  await page.goto('/')
+  const ask = page.getByRole('search', { name: 'Ask why' })
+  await ask.getByRole('button', { name: 'Pick an entity' }).click()
+  await page.getByRole('combobox').fill('verify')
+  await page.getByRole('option', { name: /verify/ }).first().click()
+  await ask.getByRole('textbox', { name: 'Your question' }).fill('why did requests drop chardet?')
+  await ask.getByRole('button', { name: 'Clear entity' }).click()
+  await ask.getByRole('button', { name: 'Trace' }).click()
+
+  await expect(page.getByText('No matching item')).toBeVisible()
+  const params = new URL(page.url()).searchParams
+  expect(params.has('entity')).toBe(false)
+  expect(params.get('q')).toBe('why did requests drop chardet?')
+})
+
+test('Markup in a plain question is shown as text, never run', async ({ page }) => {
+  const q = `<img src=x onerror=alert(1)> "quotes" & ' apostrophes 🙂`
+  await page.goto(why(null, q))
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText(q)
+  await expect(page.getByRole('textbox', { name: 'Your question' })).toHaveValue(q)
+  expect(await page.locator('main img').count()).toBe(0)
+})
+
 test('Double-clicking "Flag as missing context" adds one flag, not two', async ({ page }) => {
   await page.goto(why(ID.poolMaxsize, 'q'))
   await page.getByRole('button', { name: 'Flag as missing context' }).dblclick()
