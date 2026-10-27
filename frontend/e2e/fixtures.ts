@@ -46,7 +46,10 @@ export const test = base.extend<{ allowConsoleErrors: RegExp[]; guard: void }>({
 
 export { expect }
 
-/** Wait until the app has loaded the repo list (the top bar shows the selected repo). */
+/**
+ * Wait until the app has loaded the repo list. The switcher is there while it loads, so wait for it
+ * to name a repo ("current: psf/requests"), not just for the button.
+ */
 export async function ready(page: Page) {
-  await expect(page.getByRole('button', { name: /Switch repository/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Switch repository, current:\s*[\w.-]+\/[\w.-]+/ })).toBeVisible()
 }

@@ -104,6 +104,8 @@ test('Graph nodes can be reached and used from the keyboard', async ({ page }) =
 test('Focus is always visible on buttons and links', async ({ page }) => {
   await page.goto('/')
   await ready(page)
+  // Tab through Home's own links too, not off the end of a page that is still loading.
+  await expect(page.getByRole('heading', { name: 'Hotspots' })).toBeVisible()
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Tab')
     const style = await page.evaluate(() => {
