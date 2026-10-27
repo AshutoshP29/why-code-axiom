@@ -1,8 +1,10 @@
-import { Link } from 'react-router'
-import type { SupersededNote } from '../api/types'
+import { Link, useNavigate } from 'react-router'
+import type { Answer, SupersededNote } from '../api/types'
+import { entityLabel } from '../lib/entity'
 import { formatMonthYear, formatPct } from '../lib/format'
-import { lineagePath } from '../lib/routes'
+import { lineagePath, whyPath } from '../lib/routes'
 import { TEXT_TONE, type Tone } from '../lib/tones'
+import { EntityPicker } from './EntityPicker'
 import { ProgressBar } from './ui'
 
 export function Breadcrumb({ parts }: { parts: string[] }) {
@@ -27,6 +29,32 @@ export function ConfidenceMeter({ value, tone, note }: { value: number; tone: To
       <ProgressBar value={value} tone={tone} label="Confidence" className="w-28" />
       <span className={`font-semibold ${TEXT_TONE[tone]}`}>{formatPct(value)}</span>
       {note && <span className="text-faint">{note}</span>}
+    </div>
+  )
+}
+
+/**
+ * For a question asked without an entity: which item the API matched it to, and a way to ask about
+ * another one instead. `asked` is the question as typed, reused for the new item.
+ */
+export function MatchNote({ answer, asked }: { answer: Answer; asked: string }) {
+  const navigate = useNavigate()
+  if (answer.matched_by !== 'search' || !answer.entity) return null
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-surface px-3 py-2.5 text-sm">
+      <p className="text-muted">
+        Matched to <span className="font-mono text-ink">{entityLabel(answer.entity)}</span>
+        {answer.match_score !== null && ` (score ${answer.match_score.toFixed(2)})`} from your question.
+      </p>
+      {/* The picker starts the row so its list opens inside the column, phones included. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <EntityPicker
+          value={null}
+          emptyLabel="pick a different entity"
+          onChange={(picked) => navigate(whyPath(picked.id, asked || answer.question))}
+        />
+        <span className="text-xs text-faint">if this is not the item you meant</span>
+      </div>
     </div>
   )
 }

@@ -25,8 +25,8 @@ export function WhyPage() {
   // Keyed so dialogs and flags start fresh for each item and question.
   const key = `${data.entity?.id ?? ''}|${data.question}`
   return data.verdict === 'answered' ? (
-    <AnsweredView key={key} answer={data} repoId={repo.id} />
+    <AnsweredView key={key} answer={data} repoId={repo.id} asked={question} />
   ) : (
-    <RefusalView key={key} answer={data} repoId={repo.id} />
+    <RefusalView key={key} answer={data} repoId={repo.id} asked={question} />
   )
 }

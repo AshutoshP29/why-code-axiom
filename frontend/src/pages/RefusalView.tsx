@@ -1,14 +1,16 @@
 import { useRef, useState } from 'react'
-import { Link } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { useFlagGap } from '../api/queries'
 import type { EntityKind, Person, RefusedAnswer } from '../api/types'
-import { Breadcrumb, ConfidenceMeter, PartialHistoryNote } from '../components/answer-parts'
+import { Breadcrumb, ConfidenceMeter, MatchNote, PartialHistoryNote } from '../components/answer-parts'
 import { AskMaintainerDialog } from '../components/AskMaintainerDialog'
 import { ConfidenceFactors } from '../components/ConfidenceFactors'
+import { EntityPicker } from '../components/EntityPicker'
 import { PersonCard } from '../components/PersonCard'
 import { Badge, Button, Card, ExternalButton, Meta, SectionLabel, SourceLink } from '../components/ui'
 import { entityCrumbs } from '../lib/entity'
 import { formatPct } from '../lib/format'
+import { whyPath } from '../lib/routes'
 
 const RELATED_CAPTION: Record<EntityKind, string> = {
   config: 'Mention the setting, but do not justify its value',
@@ -21,7 +23,8 @@ const RELATED_CAPTION: Record<EntityKind, string> = {
  * When the history does not say: facts only, kept apart from reasons, plus who to ask.
  * `entity` is null when a question asked without one matched nothing in the graph.
  */
-export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId: string }) {
+export function RefusalView({ answer, repoId, asked }: { answer: RefusedAnswer; repoId: string; asked: string }) {
+  const navigate = useNavigate()
   const [asking, setAsking] = useState<Person | null>(null)
   const flag = useFlagGap(repoId)
   const entity = answer.entity
@@ -44,6 +47,7 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
         {entity && <Breadcrumb parts={entityCrumbs(entity)} />}
         <h1 className="mt-2 text-2xl leading-snug font-semibold">{answer.question}</h1>
         {answer.partial_history && <PartialHistoryNote />}
+        <MatchNote answer={answer} asked={asked} />
 
         <Card className="mt-5 border-red/40 p-5">
           <div className="flex flex-wrap items-center gap-2">
@@ -57,6 +61,16 @@ export function RefusalView({ answer, repoId }: { answer: RefusedAnswer; repoId:
             </div>
           </div>
           <p className="mt-3 leading-relaxed">{answer.reason}</p>
+          {!entity && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <EntityPicker
+                value={null}
+                emptyLabel="pick an item to ask about"
+                onChange={(picked) => navigate(whyPath(picked.id, asked || answer.question))}
+              />
+              <span className="text-xs text-faint">and WhyCode will look at that item instead</span>
+            </div>
+          )}
         </Card>
 
         <section className="mt-7" aria-labelledby="facts-heading">

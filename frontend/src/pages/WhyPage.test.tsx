@@ -69,6 +69,50 @@ describe('Why Workspace', () => {
   })
 })
 
+describe('Asking without an entity', () => {
+  const asked = 'why does rebuild_auth strip the header?'
+
+  it('says which item the question was matched to', async () => {
+    renderApp(whyPath(null, asked))
+    expect(await screen.findByText('Active decision')).toBeInTheDocument()
+    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to Session.rebuild_auth (score 0.90) from your question.')
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Session.rebuild_auth()')
+  })
+
+  it('asks the same question about a different entity when the match is wrong', async () => {
+    const user = userEvent.setup()
+    renderApp(whyPath(null, asked))
+    await user.click(await screen.findByRole('button', { name: 'Pick a different entity' }))
+    await user.type(screen.getByRole('combobox'), 'resolve')
+    await user.click(await screen.findByRole('option', { name: /Session\.resolve_redirects/ }))
+
+    expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=${asked}`)
+    expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
+    expect(screen.queryByText(/^Matched to/)).not.toBeInTheDocument() // picked, not matched
+  })
+
+  it('shows no match line for a picked entity', async () => {
+    renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    expect(await screen.findByText('Active decision')).toBeInTheDocument()
+    expect(screen.queryByText(/^Matched to/)).not.toBeInTheDocument()
+  })
+
+  it('shows the match on a refusal too', async () => {
+    renderApp(whyPath(null, 'why is the pool size 10?'))
+    expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
+    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to HTTPAdapter.pool_maxsize (score 0.38)')
+  })
+
+  it('offers to pick an item when nothing matched', async () => {
+    const user = userEvent.setup()
+    renderApp(whyPath(null, 'why did requests drop chardet?'))
+    await user.click(await screen.findByRole('button', { name: 'Pick an item to ask about' }))
+    await user.type(screen.getByRole('combobox'), 'max_r')
+    await user.click(await screen.findByRole('option', { name: /max_retries/ }))
+    expect(currentLocation()).toBe(`/why?entity=${E.maxRetries.id}&q=why did requests drop chardet?`)
+  })
+})
+
 describe('Refusal', () => {
   it('refuses below the threshold and keeps facts apart from reasons', async () => {
     renderApp(whyPath(E.poolMaxsize.id, 'why is the default 10?'))

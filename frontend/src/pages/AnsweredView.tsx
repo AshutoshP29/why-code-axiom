@@ -4,6 +4,7 @@ import type { AnsweredAnswer, Person } from '../api/types'
 import {
   Breadcrumb,
   ConfidenceMeter,
+  MatchNote,
   PartialHistoryNote,
   SupersededBanner,
 } from '../components/answer-parts'
@@ -18,8 +19,8 @@ import { entityCrumbs } from '../lib/entity'
 import { plural } from '../lib/format'
 import { lineagePath } from '../lib/routes'
 
-/** Why Workspace: the whole idea on one screen. Every claim has a source. */
-export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoId: string }) {
+/** Why Workspace: the whole idea on one screen. Every claim has a source. `asked` is the question as typed. */
+export function AnsweredView({ answer, repoId, asked }: { answer: AnsweredAnswer; repoId: string; asked: string }) {
   const [asking, setAsking] = useState<Person | null>(null)
   const d = answer.decision
   const decidedOn = d.decided_at.slice(0, 10)
@@ -39,6 +40,7 @@ export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoI
         </div>
         <h1 className="mt-2 text-2xl leading-snug font-semibold">{answer.question}</h1>
         {answer.partial_history && <PartialHistoryNote />}
+        <MatchNote answer={answer} asked={asked} />
 
         <Card className="mt-5 border-teal/40 p-5">
           <div className="flex flex-wrap items-center gap-2">
