@@ -1,6 +1,7 @@
 import { screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
+import { createMockApi } from '../api/mock'
 import { E } from '../api/sample'
 import { whyPath } from '../lib/routes'
 import { currentLocation, renderApp } from '../test/render'
@@ -32,6 +33,18 @@ describe('Why Workspace', () => {
     expect(await screen.findByRole('textbox', { name: 'Your question' })).toHaveValue(
       'strips the Authorization header on redirect?',
     )
+  })
+
+  it('shows both thresholds from the response, and leaves the verdict to the API', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const ask = api.ask
+    api.ask = async (...args) => ({ ...(await ask(...args)), thresholds: { answer: 0.9, refuse: 0.25 } })
+    renderApp(whyPath(E.rebuildAuth.id, 'q'), { api })
+
+    expect(await screen.findByText('Refuses below 25% · warns below 90%')).toBeInTheDocument()
+    expect(screen.queryByText('Refuses below 40% · warns below 70%')).not.toBeInTheDocument()
+    // 87% is under this response's 90% line, but the API said "answered", so it is shown as an answer.
+    expect(screen.getByText('Active decision')).toBeInTheDocument()
   })
 
   it('marks who is still around', async () => {
@@ -118,7 +131,7 @@ describe('Refusal', () => {
     renderApp(whyPath(E.poolMaxsize.id, 'why is the default 10?'))
 
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
-    expect(screen.getByText('below the 40% answer threshold')).toBeInTheDocument()
+    expect(screen.getByText('Refuses below 40% · warns below 70%')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What the graph does know' })).toBeInTheDocument()
     expect(screen.getByText('Introduced in commit e4f5a6b, 2012-05-02')).toBeInTheDocument()
     expect(screen.getByText('31% match')).toBeInTheDocument()

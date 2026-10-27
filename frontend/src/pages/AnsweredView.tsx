@@ -51,7 +51,7 @@ export function AnsweredView({ answer, repoId, asked }: { answer: AnsweredAnswer
               <Badge tone="amber">Supersedes {answer.superseded.length} earlier</Badge>
             )}
             <div className="ml-auto">
-              <ConfidenceMeter value={answer.confidence} tone="teal" />
+              <ConfidenceMeter value={answer.confidence} tone="teal" thresholds={answer.thresholds} />
             </div>
           </div>
           <p className="mt-3 leading-relaxed">{answer.answer_text}</p>

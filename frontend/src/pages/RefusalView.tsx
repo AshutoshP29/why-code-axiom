@@ -53,11 +53,7 @@ export function RefusalView({ answer, repoId, asked }: { answer: RefusedAnswer; 
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="red">{entity ? 'No recorded decision' : 'No matching item'}</Badge>
             <div className="ml-auto">
-              <ConfidenceMeter
-                value={answer.confidence}
-                tone="red"
-                note={`below the ${formatPct(answer.threshold)} answer threshold`}
-              />
+              <ConfidenceMeter value={answer.confidence} tone="red" thresholds={answer.thresholds} />
             </div>
           </div>
           <p className="mt-3 leading-relaxed">{answer.reason}</p>

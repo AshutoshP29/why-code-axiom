@@ -4,6 +4,7 @@
 
 import type {
   AnsweredAnswer,
+  AnswerThresholds,
   Decision,
   Entity,
   Evaluation,
@@ -373,6 +374,9 @@ const withoutEdges = ({ supersedes: _ignored, ...d }: LineageDecision): Decision
 
 // ---------- answers ----------
 
+/** The cut-offs the API sends with every answer (see AnswerThresholds). */
+const THRESHOLDS: AnswerThresholds = { answer: 0.7, refuse: 0.4 }
+
 const node = (
   nodeId: string,
   kind: GraphNode['kind'],
@@ -398,7 +402,7 @@ const REBUILD_AUTH: AnsweredAnswer = {
   matched_by: 'selected',
   match_score: null,
   confidence: 0.87,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'To avoid leaking credentials to a different host, the session drops the Authorization header when a redirect points to another origin, and re-applies auth for the new host instead. Same-host redirects keep the header.',
@@ -475,7 +479,7 @@ const MAX_RETRIES: AnsweredAnswer = {
   matched_by: 'selected',
   match_score: null,
   confidence: 0.91,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'Retries are off by default because silent retries repeated non-idempotent calls, such as POSTs, and caused duplicate side effects. Callers who want retries pass a Retry object, which keeps the backoff rule from 2014 for connection errors.',
@@ -549,7 +553,7 @@ const VERIFY: AnsweredAnswer = {
   matched_by: 'selected',
   match_score: null,
   confidence: 0.84,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'Certificates are checked by default because an unchecked certificate lets a man-in-the-middle read or change traffic without any error. Skipping the check has to be written out as verify=False, so it is always a visible choice.',
@@ -621,7 +625,7 @@ const POOL_MAXSIZE: RefusedAnswer = {
   matched_by: 'selected',
   match_score: null,
   confidence: 0.18,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   reason:
     'The graph has no decision, discussion or incident that explains this value. Giving a reason would mean guessing, so WhyCode will not. Here is what it can show instead.',
@@ -673,7 +677,7 @@ export function genericRefusal(entity: Entity, question: string): RefusedAnswer 
     matched_by: 'selected',
     match_score: null,
     confidence: 0.05,
-    threshold: 0.4,
+    thresholds: THRESHOLDS,
     partial_history: false,
     reason:
       'The sample data has no decision, discussion or incident for this item, so WhyCode will not give a reason.',
@@ -699,7 +703,7 @@ export function noMatchRefusal(question: string, related: RelatedItem[]): Refuse
     matched_by: 'search',
     match_score: null,
     confidence: 0.04,
-    threshold: 0.4,
+    thresholds: THRESHOLDS,
     partial_history: false,
     reason:
       'No function, file or config key in the graph matches this question, so WhyCode cannot tell which code it is about and will not guess. Pick an item and ask again.',

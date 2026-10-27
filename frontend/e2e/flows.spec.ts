@@ -35,7 +35,7 @@ test('Example chip → refusal → flag as missing context → gap queue → eva
   await page.goto('/')
   await page.getByRole('link', { name: 'Why is pool_maxsize 10?', exact: true }).click()
   await expect(page.getByText('No recorded decision')).toBeVisible()
-  await expect(page.getByText('below the 40% answer threshold')).toBeVisible()
+  await expect(page.getByText('Refuses below 40% · warns below 70%')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open commit history' })).toHaveAttribute(
     'href',
     'https://github.com/psf/requests/commits/main/src/requests/adapters.py',

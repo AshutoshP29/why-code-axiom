@@ -161,6 +161,15 @@ export interface RelatedItem {
   source: SourceRef
 }
 
+/**
+ * Where confidence turns into each outcome, sent with every answer so the screens never hardcode
+ * them. The screens only display these; the verdict itself is always the API's.
+ */
+export interface AnswerThresholds {
+  answer: number // at or above this, a plain answer (0.70 today)
+  refuse: number // below this, a refusal (0.40 today); in between, an answer with a warning
+}
+
 /** How the item an answer is about was found. */
 export type MatchedBy =
   | 'selected' // the user picked the entity before asking
@@ -176,7 +185,7 @@ interface AnswerBase {
   matched_by: MatchedBy
   match_score: number | null // 0..1, how well the question matched `entity`; null unless matched_by is 'search' and an entity was found
   confidence: number // 0..1
-  threshold: number // below this WhyCode refuses
+  thresholds: AnswerThresholds
   partial_history: boolean
   who_to_ask: Person[]
   confidence_factors: ConfidenceFactor[]

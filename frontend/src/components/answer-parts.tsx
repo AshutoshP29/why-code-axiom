@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router'
-import type { Answer, SupersededNote } from '../api/types'
+import type { Answer, AnswerThresholds, SupersededNote } from '../api/types'
 import { entityLabel } from '../lib/entity'
 import { formatMonthYear, formatPct } from '../lib/format'
 import { lineagePath, whyPath } from '../lib/routes'
@@ -22,13 +22,36 @@ export function Breadcrumb({ parts }: { parts: string[] }) {
   )
 }
 
-export function ConfidenceMeter({ value, tone, note }: { value: number; tone: Tone; note?: string }) {
+/** The score, with both cut-offs from the response marked on the bar and spelled out below it. */
+export function ConfidenceMeter({
+  value,
+  tone,
+  thresholds,
+}: {
+  value: number
+  tone: Tone
+  thresholds: AnswerThresholds
+}) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-faint">Confidence</span>
-      <ProgressBar value={value} tone={tone} label="Confidence" className="w-28" />
-      <span className={`font-semibold ${TEXT_TONE[tone]}`}>{formatPct(value)}</span>
-      {note && <span className="text-faint">{note}</span>}
+    <div className="text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-faint">Confidence</span>
+        <div className="relative w-28">
+          <ProgressBar value={value} tone={tone} label="Confidence" />
+          {[thresholds.refuse, thresholds.answer].map((t, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className="absolute -top-0.5 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-ink/80"
+              style={{ left: `${t * 100}%` }}
+            />
+          ))}
+        </div>
+        <span className={`font-semibold ${TEXT_TONE[tone]}`}>{formatPct(value)}</span>
+      </div>
+      <p className="mt-1 text-faint">
+        Refuses below {formatPct(thresholds.refuse)} · warns below {formatPct(thresholds.answer)}
+      </p>
     </div>
   )
 }
