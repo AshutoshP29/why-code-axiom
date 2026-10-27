@@ -47,6 +47,24 @@ describe('mock API', () => {
     expect((await api.ask('pallets/flask', null, 'why is max_retries off?')).entity).toBeNull()
   })
 
+  it('hedges an answer whose evidence is thin, between the two thresholds', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.timeout.id, 'why no default?')
+    if (answer.verdict !== 'hedged') throw new Error(`expected a hedged answer, got ${answer.verdict}`)
+    expect(answer.warning).toMatch(/Only one source/)
+    expect(answer.confidence).toBeGreaterThanOrEqual(answer.thresholds.refuse)
+    expect(answer.confidence).toBeLessThan(answer.thresholds.answer)
+    expect(answer.decision.evidence_kind).toBe('INFERRED')
+
+    // Found by search, it is still hedged.
+    expect(await api.ask(SAMPLE_REPO, null, 'Why is there no default timeout?')).toMatchObject({
+      verdict: 'hedged',
+      entity: { id: E.timeout.id },
+      matched_by: 'search',
+      match_score: 0.75,
+    })
+  })
+
   it('rejects items that are not in the graph', async () => {
     const api = createMockApi({ delayMs: 0 })
     await expect(api.ask(SAMPLE_REPO, 'psf/requests#fn:nope', 'why?')).rejects.toBeInstanceOf(ApiError)

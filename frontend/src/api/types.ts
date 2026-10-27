@@ -167,7 +167,7 @@ export interface RelatedItem {
  */
 export interface AnswerThresholds {
   answer: number // at or above this, a plain answer (0.70 today)
-  refuse: number // below this, a refusal (0.40 today); in between, an answer with a warning
+  refuse: number // below this, a refusal (0.40 today); in between, a hedged answer
 }
 
 /** How the item an answer is about was found. */
@@ -209,7 +209,21 @@ export interface RefusedAnswer extends AnswerBase {
   history_url: string // commit history of the item on GitHub
 }
 
-export type Answer = AnsweredAnswer | RefusedAnswer
+/**
+ * A full answer given with a visible warning, for thresholds.refuse <= confidence < thresholds.answer.
+ * Everything an AnsweredAnswer has is still there; the screens add the warning and never show it
+ * as a confident answer.
+ */
+export interface HedgedAnswer extends Omit<AnsweredAnswer, 'verdict'> {
+  verdict: 'hedged'
+  warning: string // why confidence is limited, written by the backend from the factors
+}
+
+/**
+ * The API picks the verdict from the confidence and the thresholds it sends:
+ * confidence >= answer: 'answered'; refuse <= confidence < answer: 'hedged'; below refuse: 'refused'.
+ */
+export type Answer = AnsweredAnswer | HedgedAnswer | RefusedAnswer
 
 export interface Hotspot {
   entity: Entity
@@ -290,7 +304,9 @@ export type EvalSystem = 'llm_only' | 'vector_rag' | 'whycode'
 export type ExpectedOutcome = 'answered' | 'superseded' | 'refused'
 
 export interface EvalResult {
-  outcome: ExpectedOutcome // what the system actually did
+  // What the system actually did. A hedged answer is still an answer: it counts as 'answered', or as
+  // 'superseded' when it names the rules it replaced, exactly as a confident answer would.
+  outcome: ExpectedOutcome
   correct: boolean
   cited_source: boolean
 }

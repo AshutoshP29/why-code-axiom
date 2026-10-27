@@ -49,7 +49,7 @@ export function RefusalView({ answer, repoId, asked }: { answer: RefusedAnswer; 
         {answer.partial_history && <PartialHistoryNote />}
         <MatchNote answer={answer} asked={asked} />
 
-        <Card className="mt-5 border-red/40 p-5">
+        <Card tone="red" className="mt-5 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone="red">{entity ? 'No recorded decision' : 'No matching item'}</Badge>
             <div className="ml-auto">
@@ -169,7 +169,7 @@ export function RefusalView({ answer, repoId, asked }: { answer: RefusedAnswer; 
             </div>
           </section>
         )}
-        <ConfidenceFactors confidence={answer.confidence} factors={answer.confidence_factors} refused />
+        <ConfidenceFactors confidence={answer.confidence} factors={answer.confidence_factors} verdict={answer.verdict} />
       </aside>
 
       {asking && (

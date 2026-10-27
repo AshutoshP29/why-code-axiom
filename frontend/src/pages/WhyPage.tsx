@@ -8,7 +8,7 @@ import { RefusalView } from './RefusalView'
 
 /**
  * /why?entity=<id>&q=<question>, or /why?q=<question> to let the API find the entity.
- * The API decides between an answer and a refusal.
+ * The API decides between an answer, a hedged answer and a refusal.
  */
 export function WhyPage() {
   const [params] = useSearchParams()
@@ -24,9 +24,9 @@ export function WhyPage() {
   if (!data) return <Loading label="Tracing the history" />
   // Keyed so dialogs and flags start fresh for each item and question.
   const key = `${data.entity?.id ?? ''}|${data.question}`
-  return data.verdict === 'answered' ? (
-    <AnsweredView key={key} answer={data} repoId={repo.id} asked={question} />
-  ) : (
+  return data.verdict === 'refused' ? (
     <RefusalView key={key} answer={data} repoId={repo.id} asked={question} />
+  ) : (
+    <AnsweredView key={key} answer={data} repoId={repo.id} asked={question} />
   )
 }

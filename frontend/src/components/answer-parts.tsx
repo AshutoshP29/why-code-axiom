@@ -1,5 +1,5 @@
 import { Link, useNavigate } from 'react-router'
-import type { Answer, AnswerThresholds, SupersededNote } from '../api/types'
+import type { Answer, AnswerThresholds, ConfidenceFactor, SupersededNote } from '../api/types'
 import { entityLabel } from '../lib/entity'
 import { formatMonthYear, formatPct } from '../lib/format'
 import { lineagePath, whyPath } from '../lib/routes'
@@ -79,6 +79,33 @@ export function MatchNote({ answer, asked }: { answer: Answer; asked: string }) 
         <span className="text-xs text-faint">if this is not the item you meant</span>
       </div>
     </div>
+  )
+}
+
+/** The amber panel on a hedged answer: why confidence is limited, and the factors that held it back. */
+export function HedgedWarning({ warning, factors }: { warning: string; factors: ConfidenceFactor[] }) {
+  const weak = factors.filter((f) => f.tone === 'bad')
+  return (
+    <section aria-labelledby="hedged-heading" className="mt-4 flex gap-3 rounded-xl border border-amber/50 bg-amber/10 p-4">
+      <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-amber text-xs font-bold text-canvas">
+        !
+      </span>
+      <div className="min-w-0 text-sm">
+        <h2 id="hedged-heading" className="font-semibold text-amber">
+          Low confidence: check before relying on this
+        </h2>
+        <p className="mt-1 text-muted">{warning}</p>
+        {weak.length > 0 && (
+          <ul aria-label="What held confidence back" className="mt-2 flex flex-wrap gap-2">
+            {weak.map((f) => (
+              <li key={f.label} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-xs text-muted">
+                {f.label}: <span className="font-semibold text-ink">{f.display}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   )
 }
 

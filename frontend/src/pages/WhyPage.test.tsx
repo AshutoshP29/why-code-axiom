@@ -45,6 +45,7 @@ describe('Why Workspace', () => {
     expect(screen.queryByText('Refuses below 40% · warns below 70%')).not.toBeInTheDocument()
     // 87% is under this response's 90% line, but the API said "answered", so it is shown as an answer.
     expect(screen.getByText('Active decision')).toBeInTheDocument()
+    expect(screen.queryByText('Low confidence')).not.toBeInTheDocument()
   })
 
   it('marks who is still around', async () => {
@@ -79,6 +80,61 @@ describe('Why Workspace', () => {
 
     expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is Session.resolve_redirects like this?`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
+  })
+})
+
+describe('Hedged answer', () => {
+  it('gives the full answer under an amber warning', async () => {
+    renderApp(whyPath(E.timeout.id, 'why no default?'))
+
+    expect(await screen.findByRole('heading', { level: 1, name: 'Why is there no default timeout?' })).toBeInTheDocument()
+    const warning = screen.getByRole('region', { name: 'Low confidence: check before relying on this' })
+    expect(warning).toHaveTextContent(/Only one source supports this, and the reason is inferred/)
+    expect(within(warning).getByRole('list', { name: 'What held confidence back' })).toHaveTextContent(
+      'Evidence directness: 45%, inferredIndependent sources: 1 of 2 needed',
+    )
+
+    // Everything a confident answer has is still there.
+    expect(screen.getByText('Active decision')).toBeInTheDocument()
+    expect(screen.getByText('Low confidence')).toBeInTheDocument()
+    const chain = screen.getByRole('list', { name: 'Evidence, from the report to the code' })
+    expect(within(chain).getAllByRole('listitem')).toHaveLength(2)
+    expect(screen.getByRole('button', { name: 'Ask about HTTPAdapter.send' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Ask\s*@maintainer_b/ })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: 'Confidence' })).toHaveAttribute('aria-valuenow', '55')
+    expect(screen.getByText('Refuses below 40% · warns below 70%')).toBeInTheDocument()
+  })
+
+  it('lists the weak confidence factors first', async () => {
+    renderApp(whyPath(E.timeout.id, 'q'))
+    expect(await screen.findByText('Why only 55%?')).toBeInTheDocument()
+    const factors = within(screen.getByRole('list', { name: 'Confidence factors' })).getAllByRole('listitem')
+    expect(factors.map((li) => li.firstElementChild?.firstElementChild?.textContent)).toEqual([
+      'Evidence directness',
+      'Independent sources',
+      'Entity match',
+      'Supersession resolved',
+    ])
+  })
+
+  it('never looks like a confident answer', async () => {
+    const confident = renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    expect(await screen.findByText('Why 87%?')).toBeInTheDocument()
+    expect(screen.queryByText('Low confidence')).not.toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: /Low confidence/ })).not.toBeInTheDocument()
+    confident.unmount()
+
+    renderApp(whyPath(E.timeout.id, 'q'))
+    expect(await screen.findByText('Low confidence')).toBeInTheDocument()
+    expect(screen.queryByText(/^Why 55%/)).not.toBeInTheDocument()
+  })
+
+  it('writes the maintainer message with the caveat', async () => {
+    const user = userEvent.setup()
+    renderApp(whyPath(E.timeout.id, 'q'))
+    await user.click(await screen.findByRole('button', { name: /^Ask\s*@maintainer_a/ }))
+    const message = within(screen.getByRole('dialog')).getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })
+    expect(message.value).toContain('WhyCode found this decision, but with low confidence: "Leave timeouts to the caller"')
   })
 })
 

@@ -3,6 +3,7 @@
 // psf/requests rather than invented PR pages. The UI shows "Sample data" while this is in use.
 
 import type {
+  Answer,
   AnsweredAnswer,
   AnswerThresholds,
   Decision,
@@ -12,6 +13,7 @@ import type {
   ExplorerItem,
   GraphEdge,
   GraphNode,
+  HedgedAnswer,
   Health,
   Ingestion,
   LineageCommit,
@@ -129,7 +131,7 @@ export const EXPLORER: Explorer = {
     item(E.maxRetries, 5, true),
     item(E.verify, 2),
     item(E.allowRedirects, 4),
-    item(E.timeout, 5),
+    item(E.timeout, 1),
   ],
 }
 
@@ -368,6 +370,17 @@ const V1 = decision('v1', {
   proposed_by: 'maintainer_a',
   reviewed_by: 'maintainer_c',
   source: pr(300, 'verify certificates default'),
+})
+
+// The hedged sample: the reason is only inferred, from one commit message and nothing else.
+const T1 = decision('t1', {
+  summary: 'Leave timeouts to the caller',
+  rationale: 'Inferred from a commit message: a fixed default would cut off slow downloads that are still working.',
+  decided_at: '2013-08-19',
+  status: 'ACTIVE',
+  evidence_kind: 'INFERRED',
+  proposed_by: 'maintainer_b',
+  source: commit('d7a3f10', 'timeout'),
 })
 
 const withoutEdges = ({ supersedes: _ignored, ...d }: LineageDecision): Decision => d
@@ -618,6 +631,62 @@ const VERIFY: AnsweredAnswer = {
   },
 }
 
+const TIMEOUT: HedgedAnswer = {
+  verdict: 'hedged',
+  question: 'Why is there no default timeout?',
+  entity: E.timeout,
+  matched_by: 'selected',
+  match_score: null,
+  confidence: 0.55,
+  thresholds: THRESHOLDS,
+  partial_history: false,
+  warning:
+    'Only one source supports this, and the reason is inferred from a commit message rather than stated in a discussion or issue. Treat it as a lead and confirm it with the people below.',
+  answer_text:
+    'Timeouts seem to be left to the caller because no single value suits both quick API calls and long downloads. The only evidence is one commit message, so this is the likely reason, not a recorded decision.',
+  decision: withoutEdges(T1),
+  superseded: [],
+  evidence_chain: [
+    {
+      kind: 'commit',
+      title: 'd7a3f10: Pass timeout through to urllib3 instead of setting one',
+      excerpt: 'The message says a fixed default "would cut off long downloads". No pull request or issue is linked to it.',
+      meta: ['2013-08-19', '@maintainer_b'],
+      source: commit('d7a3f10', 'timeout'),
+    },
+    {
+      kind: 'code',
+      title: 'adapters.py › timeout',
+      excerpt: 'Still passed through unchanged. Later edits only renamed variables.',
+      meta: ['last touched 2022-01'],
+      source: code(ADAPTERS, 'timeout'),
+    },
+  ],
+  who_to_ask: [
+    person('maintainer_b', 'Wrote the commit', false, '2021-04-12'),
+    person('maintainer_a', 'Last touched the line', true, '2025-09-01'),
+  ],
+  confidence_factors: [
+    { label: 'Entity match', value: 0.94, display: '94%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.45, display: '45%, inferred', tone: 'bad' },
+    { label: 'Independent sources', value: 0.5, display: '1 of 2 needed', tone: 'bad' },
+    { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
+  ],
+  graph: {
+    nodes: [
+      node(T1.id, 'decision', 'Leave timeouts to the caller', { center: true, url: T1.source.url }),
+      node(E.timeout.id, 'entity', 'timeout', { entity_id: E.timeout.id }),
+      node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
+      node('commit-d7a3f10', 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
+    ],
+    edges: [
+      edge(T1.id, E.timeout.id, 'AFFECTS'),
+      edge(T1.id, E.send.id, 'AFFECTS'),
+      edge(T1.id, 'commit-d7a3f10', 'SUPPORTED_BY'),
+    ],
+  },
+}
+
 const POOL_MAXSIZE: RefusedAnswer = {
   verdict: 'refused',
   question: 'Why is HTTPAdapter.pool_maxsize 10 by default?',
@@ -661,10 +730,11 @@ const POOL_MAXSIZE: RefusedAnswer = {
   ],
 }
 
-export const ANSWERS: Record<string, AnsweredAnswer | RefusedAnswer> = {
+export const ANSWERS: Record<string, Answer> = {
   [E.rebuildAuth.id]: REBUILD_AUTH,
   [E.maxRetries.id]: MAX_RETRIES,
   [E.verify.id]: VERIFY,
+  [E.timeout.id]: TIMEOUT,
   [E.poolMaxsize.id]: POOL_MAXSIZE,
 }
 
@@ -773,6 +843,15 @@ export const LINEAGES: Record<string, LineageSample> = {
       lineageCommit('2e6a9f3', '2020-11-04', 'Document verify in the session docstring', null),
     ],
     commit_total: 6,
+  },
+  [E.timeout.id]: {
+    as_of_years: [],
+    decisions: [T1],
+    commits: [
+      lineageCommit('d7a3f10', '2013-08-19', 'Pass timeout through to urllib3 instead of setting one', T1),
+      lineageCommit('3c9b2e7', '2022-01-12', 'Rename timeout variables in HTTPAdapter.send', null),
+    ],
+    commit_total: 5,
   },
 }
 
