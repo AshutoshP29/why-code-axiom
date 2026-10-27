@@ -57,7 +57,7 @@ def local_test_target() -> Neo4jTarget:
     """The docker-compose neo4j-test container. Dev-only credentials, overridable by env var."""
     return Neo4jTarget(
         name="test",
-        uri=os.environ.get("WHYCODE_TEST_NEO4J_URI", "bolt://localhost:7688"),
+        uri=os.environ.get("WHYCODE_TEST_NEO4J_URI", "bolt://127.0.0.1:7688"),
         username=os.environ.get("WHYCODE_TEST_NEO4J_USER", "neo4j"),
         password=os.environ.get("WHYCODE_TEST_NEO4J_PASS", "whycode_dev_only"),
         database="neo4j",
