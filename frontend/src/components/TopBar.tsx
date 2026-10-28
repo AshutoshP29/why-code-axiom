@@ -12,7 +12,7 @@ import { Badge, Dot } from './ui'
 
 /** What the compact ask bar shows on answer pages; null shows the nav instead. */
 export interface TopBarAsk {
-  entityId: string
+  entityId: string | null // null = a plain question, asked without an entity
   text: string | null // null = the history prompt for the entity's kind
 }
 
@@ -66,13 +66,15 @@ function Nav() {
 function CompactAsk({ entityId, text }: TopBarAsk) {
   const repoId = useRepoId()
   const { data: entity } = useEntity(repoId, entityId)
-  const initialText = entity ? (text ?? HISTORY_PROMPT[entity.kind]) : ''
+  // A plain question needs nothing loaded; a picked entity is shown once it has loaded.
+  const ready = entityId === null || entity !== undefined
+  const initialText = entity ? (text ?? HISTORY_PROMPT[entity.kind]) : (text ?? '')
   return (
     // Its own row on phones, the middle of the bar on wider screens.
     <div className="order-last flex w-full min-w-0 md:order-none md:w-auto md:flex-1">
-      {entity ? (
+      {ready ? (
         // Keyed so the bar resets when the user moves to another question.
-        <AskBar key={`${entityId}|${initialText}`} variant="compact" initialEntity={entity} initialText={initialText} />
+        <AskBar key={`${entityId}|${initialText}`} variant="compact" initialEntity={entity ?? null} initialText={initialText} />
       ) : (
         <div className="h-11 flex-1" />
       )}

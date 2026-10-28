@@ -1,6 +1,6 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react'
 import { Link, type LinkProps } from 'react-router'
-import { BADGE_TONE, cx, FILL_TONE, type Tone } from '../lib/tones'
+import { BADGE_TONE, BORDER_TONE, cx, FILL_TONE, type Tone } from '../lib/tones'
 
 export function Badge({
   tone = 'gray',
@@ -60,8 +60,14 @@ export function ExternalButton({
   return <a target="_blank" rel="noreferrer" className={buttonClass(variant, className)} {...props} />
 }
 
-export function Card({ className, ...props }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cx('rounded-xl border border-line bg-surface', className)} {...props} />
+/** `tone` colours the border; it replaces the default line colour rather than competing with it. */
+export function Card({ tone, className, ...props }: HTMLAttributes<HTMLDivElement> & { tone?: Tone }) {
+  return (
+    <div
+      className={cx('rounded-xl border bg-surface', tone ? BORDER_TONE[tone] : 'border-line', className)}
+      {...props}
+    />
+  )
 }
 
 export function ProgressBar({

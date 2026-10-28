@@ -3,7 +3,9 @@
 // psf/requests rather than invented PR pages. The UI shows "Sample data" while this is in use.
 
 import type {
+  Answer,
   AnsweredAnswer,
+  AnswerThresholds,
   Decision,
   Entity,
   Evaluation,
@@ -11,6 +13,7 @@ import type {
   ExplorerItem,
   GraphEdge,
   GraphNode,
+  HedgedAnswer,
   Health,
   Ingestion,
   LineageCommit,
@@ -18,6 +21,7 @@ import type {
   Overview,
   Person,
   RefusedAnswer,
+  RelatedItem,
   Repo,
   SourceRef,
   StageProgress,
@@ -127,7 +131,7 @@ export const EXPLORER: Explorer = {
     item(E.maxRetries, 5, true),
     item(E.verify, 2),
     item(E.allowRedirects, 4),
-    item(E.timeout, 5),
+    item(E.timeout, 1),
   ],
 }
 
@@ -261,6 +265,12 @@ export const OVERVIEW: Overview = {
       summary: 'Shows the newest rule and the replaced ones as history.',
     },
     {
+      outcome: 'hedged',
+      entity: E.timeout,
+      question: 'Why is there no default timeout?',
+      summary: 'A likely reason from a single source, given under a warning.',
+    },
+    {
       outcome: 'refused',
       entity: E.poolMaxsize,
       question: 'Why is pool_maxsize 10?',
@@ -368,9 +378,23 @@ const V1 = decision('v1', {
   source: pr(300, 'verify certificates default'),
 })
 
+// The hedged sample: the reason is only inferred, from one commit message and nothing else.
+const T1 = decision('t1', {
+  summary: 'Leave timeouts to the caller',
+  rationale: 'Inferred from a commit message: a fixed default would cut off slow downloads that are still working.',
+  decided_at: '2013-08-19',
+  status: 'ACTIVE',
+  evidence_kind: 'INFERRED',
+  proposed_by: 'maintainer_b',
+  source: commit('d7a3f10', 'timeout'),
+})
+
 const withoutEdges = ({ supersedes: _ignored, ...d }: LineageDecision): Decision => d
 
 // ---------- answers ----------
+
+/** The cut-offs the API sends with every answer (see AnswerThresholds). */
+const THRESHOLDS: AnswerThresholds = { answer: 0.7, refuse: 0.4 }
 
 const node = (
   nodeId: string,
@@ -394,8 +418,10 @@ const REBUILD_AUTH: AnsweredAnswer = {
   verdict: 'answered',
   question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?',
   entity: E.rebuildAuth,
+  matched_by: 'selected',
+  match_score: null,
   confidence: 0.87,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'To avoid leaking credentials to a different host, the session drops the Authorization header when a redirect points to another origin, and re-applies auth for the new host instead. Same-host redirects keep the header.',
@@ -469,8 +495,10 @@ const MAX_RETRIES: AnsweredAnswer = {
   verdict: 'answered',
   question: 'Why is max_retries off by default?',
   entity: E.maxRetries,
+  matched_by: 'selected',
+  match_score: null,
   confidence: 0.91,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'Retries are off by default because silent retries repeated non-idempotent calls, such as POSTs, and caused duplicate side effects. Callers who want retries pass a Retry object, which keeps the backoff rule from 2014 for connection errors.',
@@ -541,8 +569,10 @@ const VERIFY: AnsweredAnswer = {
   verdict: 'answered',
   question: 'Why is verify=True the default?',
   entity: E.verify,
+  matched_by: 'selected',
+  match_score: null,
   confidence: 0.84,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   answer_text:
     'Certificates are checked by default because an unchecked certificate lets a man-in-the-middle read or change traffic without any error. Skipping the check has to be written out as verify=False, so it is always a visible choice.',
@@ -607,12 +637,70 @@ const VERIFY: AnsweredAnswer = {
   },
 }
 
+const TIMEOUT: HedgedAnswer = {
+  verdict: 'hedged',
+  question: 'Why is there no default timeout?',
+  entity: E.timeout,
+  matched_by: 'selected',
+  match_score: null,
+  confidence: 0.55,
+  thresholds: THRESHOLDS,
+  partial_history: false,
+  warning:
+    'Only one source supports this, and the reason is inferred from a commit message rather than stated in a discussion or issue. Treat it as a lead and confirm it with the people below.',
+  answer_text:
+    'Timeouts seem to be left to the caller because no single value suits both quick API calls and long downloads. The only evidence is one commit message, so this is the likely reason, not a recorded decision.',
+  decision: withoutEdges(T1),
+  superseded: [],
+  evidence_chain: [
+    {
+      kind: 'commit',
+      title: 'd7a3f10: Pass timeout through to urllib3 instead of setting one',
+      excerpt: 'The message says a fixed default "would cut off long downloads". No pull request or issue is linked to it.',
+      meta: ['2013-08-19', '@maintainer_b'],
+      source: commit('d7a3f10', 'timeout'),
+    },
+    {
+      kind: 'code',
+      title: 'adapters.py › timeout',
+      excerpt: 'Still passed through unchanged. Later edits only renamed variables.',
+      meta: ['last touched 2022-01'],
+      source: code(ADAPTERS, 'timeout'),
+    },
+  ],
+  who_to_ask: [
+    person('maintainer_b', 'Wrote the commit', false, '2021-04-12'),
+    person('maintainer_a', 'Last touched the line', true, '2025-09-01'),
+  ],
+  confidence_factors: [
+    { label: 'Entity match', value: 0.94, display: '94%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.45, display: '45%, inferred', tone: 'bad' },
+    { label: 'Independent sources', value: 0.5, display: '1 of 2 needed', tone: 'bad' },
+    { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
+  ],
+  graph: {
+    nodes: [
+      node(T1.id, 'decision', 'Leave timeouts to the caller', { center: true, url: T1.source.url }),
+      node(E.timeout.id, 'entity', 'timeout', { entity_id: E.timeout.id }),
+      node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
+      node('commit-d7a3f10', 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
+    ],
+    edges: [
+      edge(T1.id, E.timeout.id, 'AFFECTS'),
+      edge(T1.id, E.send.id, 'AFFECTS'),
+      edge(T1.id, 'commit-d7a3f10', 'SUPPORTED_BY'),
+    ],
+  },
+}
+
 const POOL_MAXSIZE: RefusedAnswer = {
   verdict: 'refused',
   question: 'Why is HTTPAdapter.pool_maxsize 10 by default?',
   entity: E.poolMaxsize,
+  matched_by: 'selected',
+  match_score: null,
   confidence: 0.18,
-  threshold: 0.4,
+  thresholds: THRESHOLDS,
   partial_history: false,
   reason:
     'The graph has no decision, discussion or incident that explains this value. Giving a reason would mean guessing, so WhyCode will not. Here is what it can show instead.',
@@ -648,10 +736,11 @@ const POOL_MAXSIZE: RefusedAnswer = {
   ],
 }
 
-export const ANSWERS: Record<string, AnsweredAnswer | RefusedAnswer> = {
+export const ANSWERS: Record<string, Answer> = {
   [E.rebuildAuth.id]: REBUILD_AUTH,
   [E.maxRetries.id]: MAX_RETRIES,
   [E.verify.id]: VERIFY,
+  [E.timeout.id]: TIMEOUT,
   [E.poolMaxsize.id]: POOL_MAXSIZE,
 }
 
@@ -661,8 +750,10 @@ export function genericRefusal(entity: Entity, question: string): RefusedAnswer 
     verdict: 'refused',
     question,
     entity,
+    matched_by: 'selected',
+    match_score: null,
     confidence: 0.05,
-    threshold: 0.4,
+    thresholds: THRESHOLDS,
     partial_history: false,
     reason:
       'The sample data has no decision, discussion or incident for this item, so WhyCode will not give a reason.',
@@ -672,6 +763,32 @@ export function genericRefusal(entity: Entity, question: string): RefusedAnswer 
     who_to_ask: [],
     confidence_factors: [
       { label: 'Entity match', value: 1, display: '100%', tone: 'good' },
+      { label: 'Evidence directness', value: 0, display: '0%', tone: 'bad' },
+      { label: 'Independent sources', value: 0, display: '0 of 2 needed', tone: 'bad' },
+      { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
+    ],
+  }
+}
+
+/** What the API says when a question asked without an entity matches nothing in the graph. */
+export function noMatchRefusal(question: string, related: RelatedItem[]): RefusedAnswer {
+  return {
+    verdict: 'refused',
+    question,
+    entity: null,
+    matched_by: 'search',
+    match_score: null,
+    confidence: 0.04,
+    thresholds: THRESHOLDS,
+    partial_history: false,
+    reason:
+      'No function, file or config key in the graph matches this question, so WhyCode cannot tell which code it is about and will not guess. Pick an item and ask again.',
+    known_facts: [],
+    related,
+    history_url: `${GH}/commits/main`,
+    who_to_ask: [],
+    confidence_factors: [
+      { label: 'Entity match', value: 0, display: 'No match', tone: 'bad' },
       { label: 'Evidence directness', value: 0, display: '0%', tone: 'bad' },
       { label: 'Independent sources', value: 0, display: '0 of 2 needed', tone: 'bad' },
       { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
@@ -732,6 +849,15 @@ export const LINEAGES: Record<string, LineageSample> = {
       lineageCommit('2e6a9f3', '2020-11-04', 'Document verify in the session docstring', null),
     ],
     commit_total: 6,
+  },
+  [E.timeout.id]: {
+    as_of_years: [],
+    decisions: [T1],
+    commits: [
+      lineageCommit('d7a3f10', '2013-08-19', 'Pass timeout through to urllib3 instead of setting one', T1),
+      lineageCommit('3c9b2e7', '2022-01-12', 'Rename timeout variables in HTTPAdapter.send', null),
+    ],
+    commit_total: 5,
   },
 }
 

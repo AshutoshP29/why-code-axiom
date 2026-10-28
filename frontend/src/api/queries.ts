@@ -64,11 +64,13 @@ export function useEntity(repo: string | null, entityId: string | null) {
   })
 }
 
+/** entityId null: a plain question, and the API finds the entity. Either one is enough to ask. */
 export function useAnswer(repo: string | null, entityId: string | null, question: string) {
   const { api } = useApi()
+  const asking = entityId !== null || question.trim() !== ''
   return useQuery({
     queryKey: ['answer', repo, entityId, question],
-    queryFn: repo && entityId ? () => api.ask(repo, entityId, question) : skipToken,
+    queryFn: repo && asking ? () => api.ask(repo, entityId, question) : skipToken,
     staleTime: 5 * 60_000,
   })
 }

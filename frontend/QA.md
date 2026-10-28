@@ -1,24 +1,95 @@
 # Frontend QA report
 
-Date: 26 Oct 2026. Branch: `saanvi/frontend-qa`. Data: the built-in sample data, plus a fake
+Date: 28 Oct 2026. Branch: `saanvi/ask-and-hedged`. Data: the built-in sample data, plus a fake
 backend for the API tests. No real backend exists yet.
+
+This pass covers two contract changes: asking without picking an entity, and the hedged answer
+(a full answer under a warning, between the refuse and answer thresholds). The first QA pass,
+from 26 Oct, is further down.
 
 ## Result
 
 | Check | Where | Result |
 |---|---|---|
-| Unit and screen tests | Vitest, simulated browser, 12 files | **72 / 72 pass** |
-| User journeys from the flow chart | Edge, Chrome, phone (Pixel 7 emulation) | **36 / 36 pass** |
-| Accessibility scan, WCAG 2.1 A and AA (axe-core) | 8 pages + 5 dialogs and states, Edge and Chrome | **26 / 26 pass, 0 violations** |
-| Keyboard-only use | Edge, Chrome | **16 / 16 pass** |
-| Edge cases | Edge, Chrome | **20 / 20 pass** |
-| Layout: no sideways scrolling, full-page screenshots | 7 pages on Edge, Chrome and phone | **21 / 21 pass** |
-| Real HTTP client against a fake backend | Edge | **6 / 6 pass** |
+| Unit and screen tests | Vitest, simulated browser, 12 files | **92 / 92 pass** |
+| User journeys from the flow chart | Edge, Chrome, phone (Pixel 7 emulation) | **45 / 45 pass** |
+| Accessibility scan, WCAG 2.1 A and AA (axe-core) | 11 pages and answer states + 7 dialogs and open lists, Edge and Chrome | **36 / 36 pass, 0 violations** |
+| Keyboard-only use | Edge, Chrome | **20 / 20 pass** |
+| Edge cases | Edge, Chrome | **26 / 26 pass** |
+| Layout: no sideways scrolling, full-page screenshots | 10 pages and answer states on Edge, Chrome and phone | **30 / 30 pass** |
+| Real HTTP client against a fake backend | Edge | **8 / 8 pass** |
 | Type check, lint, production build | | pass |
 
-Final browser run: 125 of 125 passed, none needed a retry.
+Full browser run: 165 of 165 passed. 160 passed first time. The other 5 were accessibility scans
+at the start of the run that hit the 30-second limit (one of them was the Chrome page-load hang
+described below), and all 5 passed on retry with no violations. The scans now have 60 seconds,
+and a second run of all 36 scans with retries turned off passed.
 
-## Bugs found and fixed
+## What was checked in this pass
+
+- **Asking with nothing picked.** Trace is enabled once there is a question. The request sends
+  `entity_id: null`, not a missing field (unit test of the HTTP client, and the fake backend
+  checks the body). A blank question with nothing picked cannot be sent. A picked entity can be
+  cleared, by mouse or keyboard.
+- **Matched by search.** The page says "Matched to Session.rebuild_auth (score 0.90) from your
+  question". "Pick a different entity" asks the same question about another item, and Back
+  returns to the matched answer. A picked entity shows no match line.
+- **Nothing matched.** The refusal still shows the reason and related items, with no breadcrumb,
+  no gap flag and no owner, and offers a picker to ask about a specific item.
+- **Hedged answer.** Everything a confident answer has (decision, evidence chain, graph, who to
+  ask), plus the amber warning with the backend's text and the weak factors, a "Low confidence"
+  badge, an amber card and meter, "Why only 55%?" with the weak factors first, and a maintainer
+  message that carries the caveat. A test checks a confident answer has none of these.
+- **Thresholds from the response.** The meter marks both thresholds and spells them out. With
+  other thresholds in the response (unit test, and through the real HTTP client), the page shows
+  those numbers. An 87% answer under a 90% answer line still shows as answered, because the
+  verdict is the API's.
+- **Markup in a plain question** is shown as text and never run.
+
+## Bugs found and fixed in this pass
+
+1. **The hedged answer's amber card border did not show.** `Card` always set the line colour,
+   and a border colour passed in competed with it. Tailwind happened to write the amber rule
+   first, so the line colour won. The existing teal and red borders only won through the same
+   ordering. `Card` now takes a `tone`, which replaces the line colour instead of competing.
+2. **A browser test could start before the app had loaded.** `ready()` waited for the repo
+   switcher, which is on screen while the repo list is still loading. The focus check then tabbed
+   off the end of a page that was still loading and failed. `ready()` now waits for the switcher
+   to name a repo.
+3. **Accessibility scans timed out on a busy laptop.** The page had loaded fully; the scan itself
+   took more than 30 seconds. The limit for scans is now 60 seconds, and the checks are unchanged.
+
+## Not covered
+
+- Firefox and Safari: only Chromium browsers (Edge, Chrome) are installed on this machine.
+- A real screen reader (NVDA, VoiceOver): the automated scan and keyboard tests catch a lot, but
+  not everything a person would notice.
+- Real phones: the phone runs use Chrome's Pixel 7 emulation.
+- The real backend, and real search: the screens are tested against the sample data and a fake
+  API that follows `src/api/types.ts`. The mock matches a plain question by shared words only,
+  not by full-text or vector search, so match quality is not tested here.
+- A pixel-by-pixel comparison with Figma: the hedged answer and the match line are not in the
+  designs, and the screenshots in the HTML report are for a person to check by eye.
+
+## Running it
+
+```sh
+cd frontend
+npm test              # unit and screen tests
+npm run e2e           # browser tests; needs Edge and Chrome installed, starts its own servers
+npm run e2e:report    # open the HTML report with screenshots of every page
+```
+
+Browser tests run 4 at a time with one retry. More than 4 browsers at once overloaded a laptop
+and made Chrome time out on page loads, which had nothing to do with the app. A test that only
+passes on its retry is listed as "flaky" in the report, so it is never hidden.
+
+## First QA pass (26 Oct 2026)
+
+Branch `saanvi/frontend-qa`: 72 unit tests and 125 browser tests, all passing. It also added the
+Evaluation page and the "ingestion stopped" state.
+
+Bugs found and fixed then:
 
 1. **Small grey text failed colour contrast on every page** (2.99:1, the rule is 4.5:1). The grey
    is now 4.8:1 on every background, including tinted badges, and red badge text went from 4.2:1
@@ -39,51 +110,3 @@ Final browser run: 125 of 125 passed, none needed a retry.
 11. **If the repository list failed to load there was no way to retry**, and a failed background
     refresh would have replaced the whole page with an error. There is now a "Try again" button,
     and a failed refresh keeps the list already shown.
-
-## Pages added in this pass
-
-- **Evaluation** (`/evaluation`, linked from Graph health): every labelled question, the right
-  response (answered, superseded or no record), and each system's result, with a filter. Until
-  the real test is run, it shows 8 sample questions marked as placeholders.
-- **Ingestion stopped**: when a repository's ingestion ends in an error, Home shows where it
-  stopped and why, with "Run it again" and "Ask about what was read".
-
-## What each suite covers
-
-- **Journeys** (`e2e/flows.spec.ts`): ask from Home; an example chip leading to a refusal, a
-  flag, the gap queue and Evaluation; a hotspot leading to lineage, all three "View as of" years,
-  a decision, the workspace, and Back retracing; re-asking from a graph node; copying the
-  maintainer message; switching repo; asking during ingestion; adding a repo and watching it
-  progress; exporting the health report; re-running ingestion; reloading a deep link; bad
-  addresses and unknown items.
-- **Edge cases** (`e2e/edge-cases.spec.ts`): HTML and emoji in a question are shown as text and
-  never run; a 2,000-character question; a blank question; double-clicks; fast "View as of"
-  switching; searches with no match; pasted GitHub links; adding a repo twice; non-GitHub links;
-  Back and Forward.
-- **API** (`e2e/api.spec.ts`): requests carry the repo and graph ids; a 503 shows the server's
-  reason and recovers on retry; an unreachable backend is explained; a slow answer shows loading;
-  unknown items show the API's reason; flags send the right body.
-
-## Not covered
-
-- Firefox and Safari: only Chromium browsers (Edge, Chrome) are installed on this machine.
-- A real screen reader (NVDA, VoiceOver): the automated scan and keyboard tests catch a lot, but
-  not everything a person would notice.
-- Real phones: the phone runs use Chrome's Pixel 7 emulation.
-- The real backend: the screens are tested against the sample data and a fake API that follows
-  `src/api/types.ts`.
-- A pixel-by-pixel comparison with Figma: the screenshots in the HTML report are for a person to
-  compare by eye.
-
-## Running it
-
-```sh
-cd frontend
-npm test              # unit and screen tests
-npm run e2e           # browser tests; needs Edge and Chrome installed, starts its own servers
-npm run e2e:report    # open the HTML report with screenshots of every page
-```
-
-Browser tests run 4 at a time with one retry. More than 4 browsers at once overloaded a laptop
-and made Chrome time out on page loads, which had nothing to do with the app. A test that only
-passes on its retry is listed as "flaky" in the report, so it is never hidden.

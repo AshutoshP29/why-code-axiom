@@ -144,13 +144,10 @@ export function EvaluationPage() {
                 <tr key={q.id} className="border-b border-line align-top last:border-0">
                   <td className="px-4 py-3 font-mono text-xs text-faint">{q.id}</td>
                   <th scope="row" className="min-w-64 px-2 py-3 text-left font-normal">
-                    {q.entity ? (
-                      <Link to={whyPath(q.entity.id, q.question)} className="hover:underline">
-                        {q.question}
-                      </Link>
-                    ) : (
-                      q.question
-                    )}
+                    {/* A question with no entity is asked as it is, and the API finds the item. */}
+                    <Link to={whyPath(q.entity?.id ?? null, q.question)} className="hover:underline">
+                      {q.question}
+                    </Link>
                   </th>
                   <td className="px-2 py-3">
                     <Badge tone={OUTCOME_LABEL[q.expected].tone}>{OUTCOME_LABEL[q.expected].label}</Badge>

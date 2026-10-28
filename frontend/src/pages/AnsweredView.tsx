@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router'
-import type { AnsweredAnswer, Person } from '../api/types'
+import type { AnsweredAnswer, HedgedAnswer, Person } from '../api/types'
 import {
   Breadcrumb,
   ConfidenceMeter,
+  HedgedWarning,
+  MatchNote,
   PartialHistoryNote,
   SupersededBanner,
 } from '../components/answer-parts'
@@ -18,11 +20,25 @@ import { entityCrumbs } from '../lib/entity'
 import { plural } from '../lib/format'
 import { lineagePath } from '../lib/routes'
 
-/** Why Workspace: the whole idea on one screen. Every claim has a source. */
-export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoId: string }) {
+/**
+ * Why Workspace: the whole idea on one screen. Every claim has a source. A hedged answer shows all
+ * of it too, but in amber, under a warning, and never looking like a confident one.
+ * `asked` is the question as typed.
+ */
+export function AnsweredView({
+  answer,
+  repoId,
+  asked,
+}: {
+  answer: AnsweredAnswer | HedgedAnswer
+  repoId: string
+  asked: string
+}) {
   const [asking, setAsking] = useState<Person | null>(null)
+  const hedged = answer.verdict === 'hedged'
   const d = answer.decision
   const decidedOn = d.decided_at.slice(0, 10)
+  const found = `"${d.summary}" (${d.source.label}, ${decidedOn})`
 
   return (
     <div className="grid flex-1 grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)_300px]">
@@ -39,17 +55,20 @@ export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoI
         </div>
         <h1 className="mt-2 text-2xl leading-snug font-semibold">{answer.question}</h1>
         {answer.partial_history && <PartialHistoryNote />}
+        <MatchNote answer={answer} asked={asked} />
+        {answer.verdict === 'hedged' && <HedgedWarning warning={answer.warning} factors={answer.confidence_factors} />}
 
-        <Card className="mt-5 border-teal/40 p-5">
+        <Card tone={hedged ? 'amber' : 'teal'} className="mt-5 p-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge tone={d.status === 'ACTIVE' ? 'teal' : 'blue'}>
               {d.status === 'ACTIVE' ? 'Active decision' : 'Partly in force'}
             </Badge>
+            {hedged && <Badge tone="amber">Low confidence</Badge>}
             {answer.superseded.length > 0 && (
               <Badge tone="amber">Supersedes {answer.superseded.length} earlier</Badge>
             )}
             <div className="ml-auto">
-              <ConfidenceMeter value={answer.confidence} tone="teal" />
+              <ConfidenceMeter value={answer.confidence} tone={hedged ? 'amber' : 'teal'} thresholds={answer.thresholds} />
             </div>
           </div>
           <p className="mt-3 leading-relaxed">{answer.answer_text}</p>
@@ -93,7 +112,7 @@ export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoI
             {answer.who_to_ask.length === 0 && <p className="text-xs text-faint">No people linked to this decision.</p>}
           </div>
         </section>
-        <ConfidenceFactors confidence={answer.confidence} factors={answer.confidence_factors} refused={false} />
+        <ConfidenceFactors confidence={answer.confidence} factors={answer.confidence_factors} verdict={answer.verdict} />
       </aside>
 
       {asking && (
@@ -102,7 +121,11 @@ export function AnsweredView({ answer, repoId }: { answer: AnsweredAnswer; repoI
           repo={repoId}
           entity={answer.entity}
           question={answer.question}
-          finding={`WhyCode found this decision: "${d.summary}" (${d.source.label}, ${decidedOn}). I'd like to confirm it still holds.`}
+          finding={
+            hedged
+              ? `WhyCode found this decision, but with low confidence: ${found}. I'd like to check whether that is the real reason.`
+              : `WhyCode found this decision: ${found}. I'd like to confirm it still holds.`
+          }
           onClose={() => setAsking(null)}
         />
       )}

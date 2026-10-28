@@ -7,7 +7,10 @@ import { cx } from '../lib/tones'
 import { EntityPicker } from './EntityPicker'
 import { Badge, Button } from './ui'
 
-/** Pick a code item first, then ask why. The hero version sits on Home, the compact one in the top bar. */
+/**
+ * Ask why about a picked code item, or type a plain question and let the API find the item.
+ * The hero version sits on Home, the compact one in the top bar.
+ */
 export function AskBar({
   variant,
   initialEntity = null,
@@ -21,11 +24,18 @@ export function AskBar({
   const [entity, setEntity] = useState<Entity | null>(initialEntity)
   const [text, setText] = useState(initialText)
   const inputRef = useRef<HTMLInputElement>(null)
+  const question = text.trim()
+  const canAsk = entity !== null || question !== ''
 
   function submit(e: FormEvent) {
     e.preventDefault()
-    if (!entity) return
-    navigate(whyPath(entity.id, text.trim() || defaultQuestion(entity)))
+    if (entity) navigate(whyPath(entity.id, question || defaultQuestion(entity)))
+    else if (question) navigate(whyPath(null, question))
+  }
+
+  function pick(picked: Entity | null) {
+    setEntity(picked)
+    inputRef.current?.focus()
   }
 
   return (
@@ -39,17 +49,21 @@ export function AskBar({
       )}
     >
       <Badge tone="teal">Why</Badge>
-      <EntityPicker
-        value={entity}
-        onChange={(picked) => {
-          setEntity(picked)
-          inputRef.current?.focus()
-        }}
-      />
+      <EntityPicker value={entity} onChange={pick} />
+      {entity && (
+        <button
+          type="button"
+          onClick={() => pick(null)}
+          className="-ml-1 grid size-6 shrink-0 place-items-center rounded-md text-faint hover:bg-raised hover:text-ink"
+        >
+          <span aria-hidden>×</span>
+          <span className="sr-only">Clear entity</span>
+        </button>
+      )}
       <input
         ref={inputRef}
         aria-label="Your question"
-        placeholder="then ask why it is this way..."
+        placeholder={entity ? 'then ask why it is this way...' : 'or type a question...'}
         value={text}
         onChange={(e) => setText(e.target.value)}
         className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
@@ -57,8 +71,8 @@ export function AskBar({
       <Button
         type="submit"
         variant="primary"
-        disabled={!entity}
-        title={entity ? undefined : 'Pick an entity first'}
+        disabled={!canAsk}
+        title={canAsk ? undefined : 'Pick an entity or type a question'}
         className={variant === 'compact' ? 'px-3 py-1.5' : undefined}
       >
         Trace

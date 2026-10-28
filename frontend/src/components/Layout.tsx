@@ -26,9 +26,10 @@ export function Layout() {
 
   // Answer pages swap the nav for an ask bar holding the current question, as in the designs.
   const entityId = params.get('entity')
+  const question = params.get('q') ?? ''
   const ask: TopBarAsk | null =
-    entityId && pathname === '/why'
-      ? { entityId, text: params.get('q') ?? '' }
+    pathname === '/why' && (entityId || question.trim())
+      ? { entityId, text: question }
       : entityId && pathname === '/lineage'
         ? { entityId, text: null }
         : null

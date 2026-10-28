@@ -10,9 +10,11 @@ import { useRepoId } from '../state/repo-context'
 export function EntityPicker({
   value,
   onChange,
+  emptyLabel = 'pick an entity',
 }: {
   value: Entity | null
   onChange: (entity: Entity) => void
+  emptyLabel?: string // the chip's text while nothing is picked
 }) {
   const repoId = useRepoId()
   const [open, setOpen] = useState(false)
@@ -57,7 +59,7 @@ export function EntityPicker({
         type="button"
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-label={value ? `Entity: ${entityLabel(value)}. Change entity` : 'Pick an entity'}
+        aria-label={value ? `Entity: ${entityLabel(value)}. Change entity` : emptyLabel.charAt(0).toUpperCase() + emptyLabel.slice(1)}
         onClick={() => setOpen((o) => !o)}
         className={cx(
           'max-w-56 truncate rounded-md border px-2 py-1 font-mono text-xs',
@@ -66,7 +68,7 @@ export function EntityPicker({
             : 'border-line-strong bg-raised text-muted hover:text-ink',
         )}
       >
-        {value ? entityLabel(value) : 'pick an entity'}
+        {value ? entityLabel(value) : emptyLabel}
       </button>
 
       {open && (

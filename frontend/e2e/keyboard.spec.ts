@@ -38,6 +38,43 @@ test('Ask a question with the keyboard only', async ({ page }) => {
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why is max_retries off by default?')
 })
 
+test('Ask a plain question with the keyboard, then pick a different entity', async ({ page }) => {
+  await page.goto('/')
+  const ask = page.getByRole('search', { name: 'Ask why' })
+  await tabTo(page, ask.getByRole('textbox', { name: 'Your question' }))
+  await page.keyboard.type('why does rebuild_auth strip the header?')
+  await page.keyboard.press('Enter')
+  await expect(page.getByText(/^Matched to/)).toBeVisible()
+
+  // Focus continues from where the ask bar was, so the picker under the question is a few Tabs away.
+  await tabTo(page, page.getByRole('button', { name: 'Pick a different entity' }))
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('combobox')).toBeFocused()
+  await page.keyboard.type('resolve')
+  await expect(page.getByRole('option', { name: /resolve_redirects/ })).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(page.getByText('No recorded decision')).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.resolveRedirects)
+})
+
+test('A picked entity can be cleared with the keyboard', async ({ page }) => {
+  await page.goto('/')
+  const ask = page.getByRole('search', { name: 'Ask why' })
+  await tabTo(page, ask.getByRole('button', { name: 'Pick an entity' }))
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('verify')
+  await expect(page.getByRole('option').first()).toBeVisible()
+  await page.keyboard.press('Enter')
+
+  const question = ask.getByRole('textbox', { name: 'Your question' })
+  await expect(question).toBeFocused()
+  await page.keyboard.press('Shift+Tab')
+  await expect(ask.getByRole('button', { name: 'Clear entity' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(question).toBeFocused()
+  await expect(ask.getByRole('button', { name: 'Pick an entity' })).toBeVisible()
+})
+
 test('Entity picker: arrows move through results, Escape closes and returns focus', async ({ page }) => {
   await page.goto('/')
   const ask = page.getByRole('search', { name: 'Ask why' })
@@ -104,6 +141,8 @@ test('Graph nodes can be reached and used from the keyboard', async ({ page }) =
 test('Focus is always visible on buttons and links', async ({ page }) => {
   await page.goto('/')
   await ready(page)
+  // Tab through Home's own links too, not off the end of a page that is still loading.
+  await expect(page.getByRole('heading', { name: 'Hotspots' })).toBeVisible()
   for (let i = 0; i < 12; i++) {
     await page.keyboard.press('Tab')
     const style = await page.evaluate(() => {

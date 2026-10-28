@@ -22,6 +22,16 @@ export const FILL_TONE: Record<Tone, string> = {
   gray: 'bg-gray',
 }
 
+export const BORDER_TONE: Record<Tone, string> = {
+  teal: 'border-teal/40',
+  amber: 'border-amber/40',
+  red: 'border-red/40',
+  blue: 'border-blue/40',
+  green: 'border-green/40',
+  violet: 'border-violet/40',
+  gray: 'border-line-strong',
+}
+
 export const TEXT_TONE: Record<Tone, string> = {
   teal: 'text-teal',
   amber: 'text-amber',

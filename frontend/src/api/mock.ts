@@ -3,6 +3,7 @@
 // user journey can be clicked through before the backend exists.
 
 import { entityLabel, parseRepoInput } from '../lib/entity'
+import { formatPct } from '../lib/format'
 import { ApiError } from './http'
 import {
   ANSWERS,
@@ -13,15 +14,19 @@ import {
   genericRefusal,
   HEALTH,
   LINEAGES,
+  noMatchRefusal,
   OVERVIEW,
   SAMPLE_REPO,
   sampleRepos,
   sampleStages,
 } from './sample'
 import type {
+  Answer,
+  ConfidenceFactor,
   Entity,
   EntityMatch,
   Health,
+  RelatedItem,
   Repo,
   RepoCheck,
   Stage,
@@ -41,6 +46,78 @@ const STAGES: Stage[] = ['fetch', 'parse', 'link', 'extract', 'supersession']
 
 // JSON round trip: callers get their own copy, as they would from a real response.
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T
+
+// ---------- matching a question to an entity ----------
+// The API uses full-text search, then vector search over evidence. The mock only counts shared
+// words, which is enough to click through every outcome.
+
+/** Below this score the mock matches nothing and refuses with no entity. */
+export const MIN_MATCH_SCORE = 0.3
+
+const STOP_WORDS = new Set(
+  'a an and are by default did do does for from how in is it its like of on or py requests src the this to was what when why with'.split(' '),
+)
+
+/** "Why does rebuild_auth strip headers?" -> ["rebuild", "auth", "strip", "header"]. */
+function words(text: string): string[] {
+  return (text.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((w) => !STOP_WORDS.has(w))
+    .map((w) => (w.length > 3 && w.endsWith('s') ? w.slice(0, -1) : w))
+}
+
+/**
+ * Share of the entity's name words that the question uses, lower for one-word names (easier to hit
+ * by chance), plus a little when its class or file is named too. Never above 0.95.
+ */
+function keywordScore(asked: Set<string>, entity: Entity): number {
+  const name = words(entity.name)
+  const hits = name.filter((w) => asked.has(w)).length
+  if (hits === 0) return 0
+  const context = words(`${entity.qualified_name} ${entity.path ?? ''}`).some((w) => !name.includes(w) && asked.has(w))
+  const score = (hits / name.length) * (hits > 1 ? 0.9 : 0.75) + (context ? 0.05 : 0)
+  return Math.round(score * 100) / 100
+}
+
+function matchEntity(question: string): { entity: Entity; score: number } | null {
+  const asked = new Set(words(question))
+  let best: { entity: Entity; score: number } | null = null
+  for (const entity of ENTITIES) {
+    const score = keywordScore(asked, entity)
+    if (score > (best?.score ?? 0)) best = { entity, score }
+  }
+  return best && best.score >= MIN_MATCH_SCORE ? best : null
+}
+
+/** Sample evidence that shares words with the question: mentions it, explains nothing. */
+function relatedEvidence(question: string): RelatedItem[] {
+  const asked = words(question)
+  if (asked.length === 0) return []
+  const seen = new Set<string>()
+  const related: RelatedItem[] = []
+  for (const answer of Object.values(ANSWERS)) {
+    if (answer.verdict === 'refused') continue
+    for (const step of answer.evidence_chain) {
+      if (step.kind === 'code' || seen.has(step.source.id)) continue
+      seen.add(step.source.id)
+      const text = new Set(words(`${step.title} ${step.excerpt}`))
+      const hits = asked.filter((w) => text.has(w)).length
+      if (hits > 0) related.push({ title: step.title, match_score: Math.round((hits / asked.length) * 35) / 100, source: step.source })
+    }
+  }
+  return related.sort((a, b) => b.match_score - a.match_score).slice(0, 3)
+}
+
+/** A search match changes how sure the entity is, so the "Entity match" factor shows the score. */
+function withMatchScore(answer: Answer, score: number): Answer {
+  return {
+    ...answer,
+    matched_by: 'search',
+    match_score: score,
+    confidence_factors: answer.confidence_factors.map((f): ConfidenceFactor =>
+      f.label === 'Entity match' ? { ...f, value: score, display: formatPct(score), tone: score >= 0.5 ? 'good' : 'bad' } : f,
+    ),
+  }
+}
 
 export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {}): WhyCodeApi {
   const repos = sampleRepos(now())
@@ -242,9 +319,18 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
     async ask(repoId, entityId, question) {
       await wait()
       const repo = findRepo(repoId)
-      const entity = findEntity(repoId, entityId)
+      const asked = question.trim()
       // Sample answers keep their own wording of the question, as the API would normalise it.
-      const answer = ANSWERS[entityId] ?? genericRefusal(entity, question.trim())
+      const answerFor = (entity: Entity): Answer => ANSWERS[entity.id] ?? genericRefusal(entity, asked)
+      let answer: Answer
+      if (entityId === null) {
+        const match = repoId === SAMPLE_REPO ? matchEntity(asked) : null
+        answer = match
+          ? withMatchScore(answerFor(match.entity), match.score)
+          : noMatchRefusal(asked, repoId === SAMPLE_REPO ? relatedEvidence(asked) : [])
+      } else {
+        answer = { ...answerFor(findEntity(repoId, entityId)), matched_by: 'selected', match_score: null }
+      }
       return copy({ ...answer, partial_history: repo.partial })
     },
 

@@ -161,11 +161,31 @@ export interface RelatedItem {
   source: SourceRef
 }
 
+/**
+ * Where confidence turns into each outcome, sent with every answer so the screens never hardcode
+ * them. The screens only display these; the verdict itself is always the API's.
+ */
+export interface AnswerThresholds {
+  answer: number // at or above this, a plain answer (0.70 today)
+  refuse: number // below this, a refusal (0.40 today); in between, a hedged answer
+}
+
+/** How the item an answer is about was found. */
+export type MatchedBy =
+  | 'selected' // the user picked the entity before asking
+  | 'search' // the question came without one; the API chose it (full-text search, then vector search over evidence)
+
 interface AnswerBase {
   question: string
-  entity: Entity
+  /**
+   * The code item the answer is about: the one the user picked, or the one the API matched from
+   * the question. null only on a refusal where nothing in the graph matched the question.
+   */
+  entity: Entity | null
+  matched_by: MatchedBy
+  match_score: number | null // 0..1, how well the question matched `entity`; null unless matched_by is 'search' and an entity was found
   confidence: number // 0..1
-  threshold: number // below this WhyCode refuses
+  thresholds: AnswerThresholds
   partial_history: boolean
   who_to_ask: Person[]
   confidence_factors: ConfidenceFactor[]
@@ -173,6 +193,7 @@ interface AnswerBase {
 
 export interface AnsweredAnswer extends AnswerBase {
   verdict: 'answered'
+  entity: Entity // an answer is always about one item
   answer_text: string // worded by the LLM from graph facts only
   decision: Decision // the current governing decision
   superseded: SupersededNote[]
@@ -188,7 +209,21 @@ export interface RefusedAnswer extends AnswerBase {
   history_url: string // commit history of the item on GitHub
 }
 
-export type Answer = AnsweredAnswer | RefusedAnswer
+/**
+ * A full answer given with a visible warning, for thresholds.refuse <= confidence < thresholds.answer.
+ * Everything an AnsweredAnswer has is still there; the screens add the warning and never show it
+ * as a confident answer.
+ */
+export interface HedgedAnswer extends Omit<AnsweredAnswer, 'verdict'> {
+  verdict: 'hedged'
+  warning: string // why confidence is limited, written by the backend from the factors
+}
+
+/**
+ * The API picks the verdict from the confidence and the thresholds it sends:
+ * confidence >= answer: 'answered'; refuse <= confidence < answer: 'hedged'; below refuse: 'refused'.
+ */
+export type Answer = AnsweredAnswer | HedgedAnswer | RefusedAnswer
 
 export interface Hotspot {
   entity: Entity
@@ -200,7 +235,7 @@ export interface ExampleQuestion {
   question: string
 }
 
-export type ShowcaseOutcome = 'answered' | 'superseded' | 'refused'
+export type ShowcaseOutcome = 'answered' | 'superseded' | 'hedged' | 'refused'
 
 export interface ShowcaseItem {
   outcome: ShowcaseOutcome
@@ -269,7 +304,9 @@ export type EvalSystem = 'llm_only' | 'vector_rag' | 'whycode'
 export type ExpectedOutcome = 'answered' | 'superseded' | 'refused'
 
 export interface EvalResult {
-  outcome: ExpectedOutcome // what the system actually did
+  // What the system actually did. A hedged answer is still an answer: it counts as 'answered', or as
+  // 'superseded' when it names the rules it replaced, exactly as a confident answer would.
+  outcome: ExpectedOutcome
   correct: boolean
   cited_source: boolean
 }
@@ -311,7 +348,8 @@ export interface WhyCodeApi {
   getExplorer(repo: string): Promise<Explorer>
   searchEntities(repo: string, text: string): Promise<EntityMatch[]>
   getEntity(repo: string, entityId: string): Promise<Entity>
-  ask(repo: string, entityId: string, question: string): Promise<Answer>
+  /** entityId null: the user picked nothing, so the API finds the entity from the question itself. */
+  ask(repo: string, entityId: string | null, question: string): Promise<Answer>
   getLineage(repo: string, entityId: string, asOf: string | null): Promise<Lineage>
   getHealth(repo: string): Promise<Health>
   getEvaluation(repo: string): Promise<Evaluation>

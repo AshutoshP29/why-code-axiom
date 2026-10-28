@@ -4,6 +4,10 @@ import { expect, ID, lineage, ready, test, why } from './fixtures'
 
 // Automatic accessibility scan (axe-core) against WCAG 2.1 A and AA on every screen and dialog.
 
+// A full-page scan is slow, and the first one in a browser also loads axe-core: on a busy laptop
+// that went past the 30-second default with the page fully loaded. The checks are unchanged.
+test.describe.configure({ timeout: 60_000 })
+
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze()
   const found = results.violations.map(
@@ -20,6 +24,9 @@ const PAGES: { name: string; path: string; loaded: string }[] = [
   { name: 'Home', path: '/', loaded: 'Hotspots' },
   { name: 'Why Workspace', path: why(ID.rebuildAuth, 'q'), loaded: 'Chain of evidence' },
   { name: 'Refusal', path: why(ID.poolMaxsize, 'q'), loaded: 'What the graph does know' },
+  { name: 'Hedged answer', path: why(ID.timeout, 'q'), loaded: 'Low confidence: check before relying on this' },
+  { name: 'Plain question, matched', path: why(null, 'why does rebuild_auth strip the header?'), loaded: 'Chain of evidence' },
+  { name: 'Plain question, no match', path: why(null, 'why did requests drop chardet?'), loaded: 'What the graph does know' },
   { name: 'Decision lineage', path: lineage(ID.maxRetries), loaded: 'Commits that touched this key' },
   { name: 'Graph health', path: '/health', loaded: 'Graph contents' },
   { name: 'Evaluation', path: '/evaluation', loaded: 'How a response is scored' },
@@ -48,6 +55,23 @@ test('Entity picker with results has no violations', async ({ page }) => {
   await page.getByRole('search', { name: 'Ask why' }).getByRole('button', { name: 'Pick an entity' }).click()
   await page.getByRole('combobox').fill('session')
   await expect(page.getByRole('option').first()).toBeVisible()
+  await expectNoViolations(page)
+})
+
+test('"Pick a different entity" list has no violations', async ({ page }) => {
+  await page.goto(why(null, 'why does rebuild_auth strip the header?'))
+  await page.getByRole('button', { name: 'Pick a different entity' }).click()
+  await page.getByRole('combobox').fill('session')
+  await expect(page.getByRole('option').first()).toBeVisible()
+  await expectNoViolations(page)
+})
+
+test('Ask bar with a picked entity and its clear button has no violations', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('search', { name: 'Ask why' }).getByRole('button', { name: 'Pick an entity' }).click()
+  await page.getByRole('combobox').fill('verify')
+  await page.getByRole('option').first().click()
+  await expect(page.getByRole('button', { name: 'Clear entity' })).toBeVisible()
   await expectNoViolations(page)
 })
 

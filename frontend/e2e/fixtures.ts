@@ -6,9 +6,12 @@ export const ID = {
   resolveRedirects: 'psf/requests#fn:src/requests/sessions.py::Session.resolve_redirects',
   maxRetries: 'psf/requests#cfg:max_retries',
   poolMaxsize: 'psf/requests#cfg:pool_maxsize',
+  timeout: 'psf/requests#cfg:timeout', // the hedged sample
 }
 
-export const why = (entityId: string, q: string) => `/why?${new URLSearchParams({ entity: entityId, q })}`
+/** entityId null: a plain question, as typed with nothing picked. */
+export const why = (entityId: string | null, q: string) =>
+  `/why?${new URLSearchParams(entityId ? { entity: entityId, q } : { q })}`
 export const lineage = (entityId: string, asof?: number) =>
   `/lineage?${new URLSearchParams(asof ? { entity: entityId, asof: String(asof) } : { entity: entityId })}`
 
@@ -43,7 +46,10 @@ export const test = base.extend<{ allowConsoleErrors: RegExp[]; guard: void }>({
 
 export { expect }
 
-/** Wait until the app has loaded the repo list (the top bar shows the selected repo). */
+/**
+ * Wait until the app has loaded the repo list. The switcher is there while it loads, so wait for it
+ * to name a repo ("current: psf/requests"), not just for the button.
+ */
 export async function ready(page: Page) {
-  await expect(page.getByRole('button', { name: /Switch repository/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /Switch repository, current:\s*[\w.-]+\/[\w.-]+/ })).toBeVisible()
 }

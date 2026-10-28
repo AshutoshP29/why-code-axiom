@@ -31,11 +31,69 @@ test('Home → pick an entity → ask → Why Workspace with linked evidence', a
   }
 })
 
+test('Home → plain question, nothing picked → matched answer → pick a different entity', async ({ page }) => {
+  await page.goto('/')
+  const ask = page.getByRole('search', { name: 'Ask why' })
+  await ask.getByRole('textbox', { name: 'Your question' }).fill('why does rebuild_auth strip the header?')
+  await ask.getByRole('button', { name: 'Trace' }).click()
+
+  const match = page.getByText(/^Matched to/)
+  await expect(match).toHaveText('Matched to Session.rebuild_auth (score 0.90) from your question.')
+  expect(new URL(page.url()).searchParams.has('entity')).toBe(false)
+  await expect(page.getByText('Active decision', { exact: true })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Pick a different entity' }).click()
+  await page.getByRole('combobox').fill('resolve')
+  await page.getByRole('option', { name: /Session\.resolve_redirects/ }).click()
+  await expect(page.getByText('No recorded decision')).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.resolveRedirects)
+  await expect(match).toHaveCount(0)
+
+  await page.goBack()
+  await expect(match).toBeVisible()
+})
+
+test('Plain question that matches nothing → refusal with no item → pick one and ask again', async ({ page }) => {
+  await page.goto('/')
+  const question = page.getByRole('search', { name: 'Ask why' }).getByRole('textbox', { name: 'Your question' })
+  await question.fill('why did requests drop chardet?')
+  await question.press('Enter')
+
+  await expect(page.getByText('No matching item')).toBeVisible()
+  await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toHaveCount(0)
+  await expect(page.getByText(/No function, file or config key in the graph matches/)).toBeVisible()
+  await expect(page.getByRole('link', { name: 'PR #1565: only strip auth when the host changes' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Flag as missing context' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Pick an item to ask about' }).click()
+  await page.getByRole('combobox').fill('max_r')
+  await page.getByRole('option', { name: /max_retries/ }).click()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Why is max_retries off by default?')
+})
+
+test('Showcase → hedged answer → warning over a full answer → decision history', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: /Why is there no default timeout\?/ }).click()
+
+  const warning = page.getByRole('region', { name: 'Low confidence: check before relying on this' })
+  await expect(warning).toContainText('Only one source supports this')
+  await expect(warning.getByRole('list', { name: 'What held confidence back' }).getByRole('listitem')).toHaveCount(2)
+  await expect(page.getByText('Low confidence', { exact: true })).toBeVisible()
+  await expect(page.getByText('Refuses below 40% · warns below 70%')).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Evidence, from the report to the code' }).getByRole('listitem')).toHaveCount(2)
+  await expect(page.getByRole('list', { name: 'Confidence factors' }).getByRole('listitem').first()).toContainText(
+    'Evidence directness',
+  )
+
+  await page.getByRole('link', { name: 'Decision history →' }).click()
+  await expect(page.getByRole('heading', { name: 'Decision history: timeout' })).toBeVisible()
+})
+
 test('Example chip → refusal → flag as missing context → gap queue → evaluation', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Why is pool_maxsize 10?', exact: true }).click()
   await expect(page.getByText('No recorded decision')).toBeVisible()
-  await expect(page.getByText('below the 40% answer threshold')).toBeVisible()
+  await expect(page.getByText('Refuses below 40% · warns below 70%')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open commit history' })).toHaveAttribute(
     'href',
     'https://github.com/psf/requests/commits/main/src/requests/adapters.py',

@@ -1,8 +1,10 @@
-import { Link } from 'react-router'
-import type { SupersededNote } from '../api/types'
+import { Link, useNavigate } from 'react-router'
+import type { Answer, AnswerThresholds, ConfidenceFactor, SupersededNote } from '../api/types'
+import { entityLabel } from '../lib/entity'
 import { formatMonthYear, formatPct } from '../lib/format'
-import { lineagePath } from '../lib/routes'
+import { lineagePath, whyPath } from '../lib/routes'
 import { TEXT_TONE, type Tone } from '../lib/tones'
+import { EntityPicker } from './EntityPicker'
 import { ProgressBar } from './ui'
 
 export function Breadcrumb({ parts }: { parts: string[] }) {
@@ -20,14 +22,90 @@ export function Breadcrumb({ parts }: { parts: string[] }) {
   )
 }
 
-export function ConfidenceMeter({ value, tone, note }: { value: number; tone: Tone; note?: string }) {
+/** The score, with both cut-offs from the response marked on the bar and spelled out below it. */
+export function ConfidenceMeter({
+  value,
+  tone,
+  thresholds,
+}: {
+  value: number
+  tone: Tone
+  thresholds: AnswerThresholds
+}) {
   return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-faint">Confidence</span>
-      <ProgressBar value={value} tone={tone} label="Confidence" className="w-28" />
-      <span className={`font-semibold ${TEXT_TONE[tone]}`}>{formatPct(value)}</span>
-      {note && <span className="text-faint">{note}</span>}
+    <div className="text-xs">
+      <div className="flex items-center gap-2">
+        <span className="text-faint">Confidence</span>
+        <div className="relative w-28">
+          <ProgressBar value={value} tone={tone} label="Confidence" />
+          {[thresholds.refuse, thresholds.answer].map((t, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className="absolute -top-0.5 h-2.5 w-0.5 -translate-x-1/2 rounded-full bg-ink/80"
+              style={{ left: `${t * 100}%` }}
+            />
+          ))}
+        </div>
+        <span className={`font-semibold ${TEXT_TONE[tone]}`}>{formatPct(value)}</span>
+      </div>
+      <p className="mt-1 text-faint">
+        Refuses below {formatPct(thresholds.refuse)} · warns below {formatPct(thresholds.answer)}
+      </p>
     </div>
+  )
+}
+
+/**
+ * For a question asked without an entity: which item the API matched it to, and a way to ask about
+ * another one instead. `asked` is the question as typed, reused for the new item.
+ */
+export function MatchNote({ answer, asked }: { answer: Answer; asked: string }) {
+  const navigate = useNavigate()
+  if (answer.matched_by !== 'search' || !answer.entity) return null
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-surface px-3 py-2.5 text-sm">
+      <p className="text-muted">
+        Matched to <span className="font-mono text-ink">{entityLabel(answer.entity)}</span>
+        {answer.match_score !== null && ` (score ${answer.match_score.toFixed(2)})`} from your question.
+      </p>
+      {/* The picker starts the row so its list opens inside the column, phones included. */}
+      <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+        <EntityPicker
+          value={null}
+          emptyLabel="pick a different entity"
+          onChange={(picked) => navigate(whyPath(picked.id, asked || answer.question))}
+        />
+        <span className="text-xs text-faint">if this is not the item you meant</span>
+      </div>
+    </div>
+  )
+}
+
+/** The amber panel on a hedged answer: why confidence is limited, and the factors that held it back. */
+export function HedgedWarning({ warning, factors }: { warning: string; factors: ConfidenceFactor[] }) {
+  const weak = factors.filter((f) => f.tone === 'bad')
+  return (
+    <section aria-labelledby="hedged-heading" className="mt-4 flex gap-3 rounded-xl border border-amber/50 bg-amber/10 p-4">
+      <span aria-hidden className="grid size-5 shrink-0 place-items-center rounded-full bg-amber text-xs font-bold text-canvas">
+        !
+      </span>
+      <div className="min-w-0 text-sm">
+        <h2 id="hedged-heading" className="font-semibold text-amber">
+          Low confidence: check before relying on this
+        </h2>
+        <p className="mt-1 text-muted">{warning}</p>
+        {weak.length > 0 && (
+          <ul aria-label="What held confidence back" className="mt-2 flex flex-wrap gap-2">
+            {weak.map((f) => (
+              <li key={f.label} className="rounded-full border border-amber/40 px-2.5 py-0.5 text-xs text-muted">
+                {f.label}: <span className="font-semibold text-ink">{f.display}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </section>
   )
 }
 
