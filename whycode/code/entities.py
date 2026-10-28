@@ -32,6 +32,7 @@ _LANGUAGE = Language(tspython.language())
 # Two characters or more, so single-letter TypeVars ("T = TypeVar('T')") are not config.
 _UPPER_RE = re.compile(r"^_*[A-Z][A-Z0-9_]+$")
 _STATEMENT_WRAPPERS = frozenset({"assignment", "expression_statement"})
+_MAX_VALUE_CHARS = 200
 
 
 class EntityKind(StrEnum):
@@ -54,6 +55,10 @@ class CodeEntity:
     start_line: int
     end_line: int
     parent_id: str | None  # enclosing File, Class or Function; None for the File itself
+    # A ConfigKey's assigned value or default as source text ("0", "DEFAULT_RETRIES"),
+    # whitespace collapsed and clipped; None for other kinds. Phase 2 compares it across
+    # commits to spot a key later set to a different value.
+    value: str | None = None
 
 
 @dataclass(frozen=True)
@@ -105,6 +110,10 @@ def _end_line(node: Node) -> int:
     return row if col == 0 and row > node.start_point[0] else row + 1
 
 
+def _value_text(node: Node) -> str:
+    return " ".join(_text(node).split())[:_MAX_VALUE_CHARS]
+
+
 def _references_constant(value: Node) -> bool:
     if value.type == "identifier":
         return bool(_UPPER_RE.match(_text(value)))
@@ -143,10 +152,10 @@ class _Walker:
         self._visit_children(root, scope=[], parent_id=self.file_id)
         return ParsedFile(self.path, tuple(self.entities.values()), root.has_error)
 
-    def _add(self, id_, kind, name, qualified, start, end, parent_id) -> None:
+    def _add(self, id_, kind, name, qualified, start, end, parent_id, value=None) -> None:
         if id_ not in self.entities:
             self.entities[id_] = CodeEntity(
-                id_, self.repo, kind, name, qualified, self.path, start, end, parent_id
+                id_, self.repo, kind, name, qualified, self.path, start, end, parent_id, value
             )
 
     def _visit_children(self, node: Node, scope: list[str], parent_id: str) -> None:
@@ -203,12 +212,17 @@ class _Walker:
                 param.start_point[0] + 1,
                 _end_line(param),
                 fn_id,
+                _value_text(value),
             )
 
     def _module_constant(self, node: Node) -> None:
         # `X: int` with no value declares a name but sets nothing.
-        if node.child_by_field_name("right") is None:
+        right = node.child_by_field_name("right")
+        if right is None:
             return
+        # In `A = B = 2` both names get "2", not "B = 2".
+        while right.type == "assignment" and right.child_by_field_name("right") is not None:
+            right = right.child_by_field_name("right")
         left = node.child_by_field_name("left")
         # Report the whole statement's lines, not just this (possibly chained) assignment.
         stmt = node
@@ -225,4 +239,5 @@ class _Walker:
                     stmt.start_point[0] + 1,
                     _end_line(stmt),
                     self.file_id,
+                    _value_text(right),
                 )

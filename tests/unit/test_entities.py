@@ -198,10 +198,37 @@ def test_requests_api_and_adapter_snippet():
         "        self.max_retries = max_retries\n"
     )
     cfg = parse_file(REPO, PATH, src).of_kind(EntityKind.CONFIG_KEY)
-    assert [(c.id, c.qualified_name, lines(c)) for c in cfg] == [
-        ("psf/requests#cfg:DEFAULT_RETRIES", "DEFAULT_RETRIES", (1, 1)),
-        ("psf/requests#cfg:max_retries", "HTTPAdapter.__init__.max_retries", (5, 5)),
+    assert [(c.id, c.qualified_name, c.value, lines(c)) for c in cfg] == [
+        ("psf/requests#cfg:DEFAULT_RETRIES", "DEFAULT_RETRIES", "0", (1, 1)),
+        (
+            "psf/requests#cfg:max_retries",
+            "HTTPAdapter.__init__.max_retries",
+            "DEFAULT_RETRIES",
+            (5, 5),
+        ),
     ]
+
+
+def test_config_values_are_source_text(parsed):
+    cfg = by_qualified(parsed, EntityKind.CONFIG_KEY)
+    assert cfg["DEFAULT_RETRIES"].value == "0"  # annotated
+    assert cfg["DEFAULT_POOL_TIMEOUT"].value == "None"
+    assert cfg["CONNECT_TIMEOUT"].value == cfg["READ_TIMEOUT"].value == "30"  # chained
+    assert cfg["PROXY_FALLBACK"].value == '"socks"'  # first assignment wins
+    assert cfg["fetch_all.limit"].value == "settings.MAX_CONCURRENCY"
+    assert cfg["HTTPAdapter.__init__.pool_connections"].value == "DEFAULT_POOLSIZE"
+
+
+def test_only_config_keys_carry_a_value(parsed):
+    assert all((e.value is not None) == (e.kind is EntityKind.CONFIG_KEY) for e in parsed.entities)
+
+
+def test_config_value_is_whitespace_collapsed_and_clipped():
+    src = "HEADERS = {\n    'a':   1,\n    'b': 2,\n}\nLONG = '" + "x" * 300 + "'\n"
+    cfg = by_qualified(parse_file(REPO, "c.py", src), EntityKind.CONFIG_KEY)
+    assert cfg["HEADERS"].value == "{ 'a': 1, 'b': 2, }"
+    assert cfg["HEADERS"].start_line == 1 and cfg["HEADERS"].end_line == 4
+    assert len(cfg["LONG"].value) == 200
 
 
 def test_ids_are_unique(parsed):
