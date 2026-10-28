@@ -140,6 +140,30 @@ def ingest(repo, jobs, gh, store, llm, sink: GraphSink | None, *, dry_run=False,
     return report
 
 
+def requeue_fallback(repo, jobs, store, hosted_llm) -> list[int]:
+    """Send written PRs back to the queue if any prompt part has no hosted answer cached.
+
+    Those parts were answered by the local fallback model, which finds far fewer decisions.
+    `hosted_llm` must hold only hosted providers: its dry run then counts a part as cached only
+    when Gemini or Groq answered it. Re-running a requeued PR replaces its decisions.
+    """
+    repo = normalize_repo(repo)
+    redo = []
+    for job in jobs.all(repo):
+        if job.status != "written":
+            continue
+        thread = load_thread(store, repo, job.number)
+        index = build_pr_code_index(store, repo, job.number)
+        outline = render_code_outline(index) or None
+        plan = extract_thread(thread, hosted_llm, code_outline=outline, dry_run=True)
+        if not all(c.cached for c in plan.chunks):
+            jobs.mark(
+                repo, job.number, "queued", error="redo: a part was answered by the local model"
+            )
+            redo.append(job.number)
+    return redo
+
+
 class Neo4jSink:
     def __init__(self, driver, database: str, repo: str):
         self.driver, self.database, self.repo = driver, database, normalize_repo(repo)
@@ -208,6 +232,11 @@ def main() -> int:
     parser.add_argument("--max-calls", type=int, help="cap hosted LLM calls below LLM_MAX_CALLS")
     parser.add_argument("--providers", help="override LLM_PROVIDERS for this run")
     parser.add_argument("--target", choices=["aura", "test"], default="aura")
+    parser.add_argument(
+        "--redo-fallback",
+        action="store_true",
+        help="requeue written PRs that the local fallback model answered (no LLM calls)",
+    )
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -236,6 +265,10 @@ def main() -> int:
                     f"selected {len(chosen)} merged PRs with >= {args.min_comments} comments "
                     f"({added} new in the job list)"
                 )
+            if args.redo_fallback:
+                hosted = build_llm_client(s, cache, Budget(1), order="gemini,groq")
+                redo = requeue_fallback(repo, jobs, store, hosted)
+                print(f"requeued {len(redo)} PR(s) the local model had answered: {redo}")
             if args.dry_run:
                 report = ingest(repo, jobs, gh, store, llm, None, dry_run=True)
             else:

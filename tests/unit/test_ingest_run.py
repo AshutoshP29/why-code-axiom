@@ -144,3 +144,27 @@ def test_one_pr_the_llm_cannot_answer_is_skipped_and_the_run_continues():
     assert by_number[1565].status == "written"  # the run went on
     assert report.stopped_early is None
     assert s.jobs.rows[(R, 1566)].status == "fetched"  # retried by the next run
+
+
+def test_redo_fallback_requeues_prs_the_local_model_answered():
+    from tests.fakes import MemoryLLMCache
+    from whycode.ingest.run import requeue_fallback
+
+    class Free(FakeProvider):
+        counts_against_budget = False
+
+    s = Setup()
+    cache = MemoryLLMCache()
+    s.llm = LLMClient([Free("local", "qwen", [REPLY])], cache, Budget(0))
+    s.run()  # only the local model answers
+    assert s.jobs.rows[(R, 1565)].status == "written"
+
+    gemini = FakeProvider("gemini", "fake-model", [REPLY])
+    hosted = LLMClient([gemini], cache, Budget(5))
+    assert requeue_fallback(R, s.jobs, s.store, hosted) == [1565]
+    assert s.jobs.rows[(R, 1565)].status == "queued" and gemini.calls == []  # a dry run
+
+    s.llm = hosted
+    s.run()  # gemini now answers and the PR is rewritten
+    assert s.jobs.rows[(R, 1565)].status == "written" and len(gemini.calls) == 1
+    assert requeue_fallback(R, s.jobs, s.store, hosted) == []  # nothing left to redo
