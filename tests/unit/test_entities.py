@@ -163,31 +163,45 @@ def test_class_level_and_lowercase_and_single_letter_names_are_not_constants(par
     assert "T" not in names
 
 
-def test_default_arguments_with_literal_or_constant_values(parsed):
+def test_default_arguments_that_reference_constants(parsed):
     cfg = by_qualified(parsed, EntityKind.CONFIG_KEY)
     fns = by_qualified(parsed, EntityKind.FUNCTION)
-    expected = {
-        "BaseAdapter.send.stream",
-        "BaseAdapter.send.timeout",
-        "BaseAdapter.send.verify",
-        "BaseAdapter.send.cert",
+    params = {q for q, e in cfg.items() if e.parent_id != parsed.entities[0].id}
+    assert params == {
         "HTTPAdapter.__init__.pool_connections",
         "HTTPAdapter.__init__.max_retries",
-        "HTTPAdapter.__init__.pool_block",
-        "HTTPAdapter.__init__.backoff",
         "fetch_all.limit",
-        "fetch_all.mode",
     }
-    assert expected <= set(cfg)
     max_retries = cfg["HTTPAdapter.__init__.max_retries"]
     assert max_retries.id == "psf/requests#cfg:max_retries"
     assert max_retries.parent_id == fns["HTTPAdapter.__init__"].id
     assert lines(max_retries) == (37, 37)
 
 
-def test_complex_defaults_lambda_params_and_splats_are_skipped(parsed):
+def test_literal_and_complex_defaults_are_not_config(parsed):
     names = {e.name for e in parsed.of_kind(EntityKind.CONFIG_KEY)}
-    assert not names & {"hooks", "callback", "x", "factory", "args", "kwargs", "self"}
+    literal = {"stream", "timeout", "verify", "cert", "pool_block", "backoff", "mode"}
+    complex_ = {"hooks", "callback", "x", "factory", "args", "kwargs", "self"}
+    assert not names & (literal | complex_)
+
+
+def test_requests_api_and_adapter_snippet():
+    api_src = "def get(url, params=None, **kwargs):\n    pass\n"
+    assert parse_file(REPO, "src/requests/api.py", api_src).of_kind(EntityKind.CONFIG_KEY) == []
+
+    src = (
+        "DEFAULT_RETRIES = 0\n"
+        "\n"
+        "\n"
+        "class HTTPAdapter:\n"
+        "    def __init__(self, max_retries=DEFAULT_RETRIES):\n"
+        "        self.max_retries = max_retries\n"
+    )
+    cfg = parse_file(REPO, PATH, src).of_kind(EntityKind.CONFIG_KEY)
+    assert [(c.id, c.qualified_name, lines(c)) for c in cfg] == [
+        ("psf/requests#cfg:DEFAULT_RETRIES", "DEFAULT_RETRIES", (1, 1)),
+        ("psf/requests#cfg:max_retries", "HTTPAdapter.__init__.max_retries", (5, 5)),
+    ]
 
 
 def test_ids_are_unique(parsed):
@@ -201,7 +215,7 @@ def test_parsing_is_deterministic():
 
 
 def test_same_default_arg_twice_in_a_file_is_one_entity():
-    src = "def a(timeout=1):\n    pass\n\n\ndef b(timeout=2):\n    pass\n"
+    src = "def a(timeout=TIMEOUT_A):\n    pass\n\n\ndef b(timeout=TIMEOUT_B):\n    pass\n"
     cfg = parse_file(REPO, "x.py", src).of_kind(EntityKind.CONFIG_KEY)
     assert [(c.qualified_name, c.start_line) for c in cfg] == [("a.timeout", 1)]
 

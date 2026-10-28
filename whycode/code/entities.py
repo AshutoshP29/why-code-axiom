@@ -7,9 +7,11 @@ Rules:
 - Lines are 1-based and inclusive. A decorated definition starts at its first decorator.
 - Qualified names are dotted from the module down: "Session.rebuild_auth", "outer.inner".
 - ConfigKeys are module-level UPPER_CASE assignments, including inside module-level if/try
-  blocks, and function parameters whose default is a literal (number, string, True/False/None)
-  or an UPPER_CASE name or attribute. ConfigKey ids are "<repo>#cfg:<name>" as schema.cypher
-  says, so the same key in two files is one graph node; `path` says where this one was found.
+  blocks, and function parameters whose default references a constant: an UPPER_CASE name or
+  an attribute ending in one (`max_retries=DEFAULT_RETRIES`, `timeout=settings.TIMEOUT`).
+  Literal defaults (`params=None`, `stream=False`, `retries=3`) are ordinary parameters.
+  ConfigKey ids are "<repo>#cfg:<name>" as schema.cypher says, so the same key in two files
+  is one graph node; `path` says where this one was found.
 - An id seen twice in one file (property setters, if/else redefinitions) keeps the first.
 - A file with syntax errors still yields whatever tree-sitter recovered, with the flag set.
 """
@@ -29,9 +31,6 @@ SUPPORTED_SUFFIXES = frozenset({".py"})
 _LANGUAGE = Language(tspython.language())
 # Two characters or more, so single-letter TypeVars ("T = TypeVar('T')") are not config.
 _UPPER_RE = re.compile(r"^_*[A-Z][A-Z0-9_]+$")
-_LITERAL_TYPES = frozenset(
-    {"integer", "float", "string", "concatenated_string", "true", "false", "none"}
-)
 _STATEMENT_WRAPPERS = frozenset({"assignment", "expression_statement"})
 
 
@@ -106,12 +105,7 @@ def _end_line(node: Node) -> int:
     return row if col == 0 and row > node.start_point[0] else row + 1
 
 
-def _is_config_default(value: Node) -> bool:
-    if value.type in _LITERAL_TYPES:
-        return True
-    if value.type == "unary_operator":  # -1, -0.5
-        operand = value.child_by_field_name("argument")
-        return operand is not None and operand.type in ("integer", "float")
+def _references_constant(value: Node) -> bool:
     if value.type == "identifier":
         return bool(_UPPER_RE.match(_text(value)))
     if value.type == "attribute":  # settings.TIMEOUT
@@ -199,7 +193,7 @@ class _Walker:
                 continue
             value = param.child_by_field_name("value")
             name = _text(param.child_by_field_name("name"))
-            if not name or value is None or not _is_config_default(value):
+            if not name or value is None or not _references_constant(value):
                 continue
             self._add(
                 make_id(self.repo, "cfg", name),
