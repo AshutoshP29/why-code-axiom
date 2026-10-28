@@ -32,5 +32,8 @@ export default defineConfig({
     setupFiles: ['./src/test/setup.ts'],
     // e2e/ belongs to Playwright
     include: ['src/**/*.test.{ts,tsx}', 'vite.config.test.ts'],
+    // As in playwright.config.ts: with 12 workers on a 12-thread laptop, the first screen test in a
+    // file took over the 5 s limit and failed at random.
+    maxWorkers: 4,
   },
 })
