@@ -28,6 +28,7 @@ const LINK_LABEL: Record<SupersedeKind, string> = {
 
 const KIND_NOUN: Record<EntityKind, string> = {
   config: 'key',
+  class: 'class',
   function: 'function',
   file: 'file',
   module: 'module',

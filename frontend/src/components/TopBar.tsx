@@ -18,6 +18,7 @@ export interface TopBarAsk {
 
 const HISTORY_PROMPT: Record<EntityKind, string> = {
   config: 'what is the history of this setting?',
+  class: 'what is the history of this class?',
   function: 'what is the history of this function?',
   file: 'what is the history of this file?',
   module: 'what is the history of this module?',

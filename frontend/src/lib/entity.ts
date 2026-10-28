@@ -14,6 +14,7 @@ export function entityLabel(entity: Entity): string {
 
 const KIND_LABEL: Record<EntityKind, string> = {
   file: 'file',
+  class: 'class',
   function: 'function',
   module: 'module',
   config: 'config key',

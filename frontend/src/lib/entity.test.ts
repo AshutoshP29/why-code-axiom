@@ -22,6 +22,14 @@ describe('parseRepoInput', () => {
   )
 })
 
+describe('class entities', () => {
+  it('use the graph id format and are named without call brackets', () => {
+    expect(E.sessionClass.id).toBe('psf/requests#cls:src/requests/sessions.py::Session')
+    expect(entityLabel(E.sessionClass)).toBe('Session')
+    expect(entityCrumbs(E.sessionClass, true)).toEqual(['class', 'sessions.py', 'Session'])
+  })
+})
+
 describe('entity names', () => {
   it('shows methods and settings by qualified name', () => {
     expect(entityLabel(E.rebuildAuth)).toBe('Session.rebuild_auth')

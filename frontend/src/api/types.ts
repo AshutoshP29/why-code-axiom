@@ -48,7 +48,8 @@ export interface Ingestion {
   stages: StageProgress[]
 }
 
-export type EntityKind = 'file' | 'function' | 'module' | 'config'
+// A class's id is "<repo>#cls:<path>::<qualified name>", as in whycode/graph/schema.cypher.
+export type EntityKind = 'file' | 'class' | 'function' | 'module' | 'config'
 
 export interface Entity {
   id: string

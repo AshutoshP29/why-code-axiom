@@ -65,6 +65,12 @@ describe('mock API', () => {
     })
   })
 
+  it('finds the sample class in an entity search', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const matches = await api.searchEntities(SAMPLE_REPO, 'Session')
+    expect(matches.find((m) => m.kind === 'class')).toMatchObject({ id: E.sessionClass.id, qualified_name: 'Session' })
+  })
+
   it('rejects items that are not in the graph', async () => {
     const api = createMockApi({ delayMs: 0 })
     await expect(api.ask(SAMPLE_REPO, 'psf/requests#fn:nope', 'why?')).rejects.toBeInstanceOf(ApiError)
