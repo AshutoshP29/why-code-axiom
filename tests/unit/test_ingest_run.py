@@ -14,7 +14,7 @@ from tests.fakes import (
 from tests.pipeline import SWITCH_DECISION
 from whycode.ingest.github import GitHubClient
 from whycode.ingest.run import ingest
-from whycode.ingest.select import eligible_prs
+from whycode.ingest.select import Candidate, eligible_prs
 from whycode.llm.client import Budget, LLMClient
 
 R = "test/fixture"
@@ -124,3 +124,23 @@ def test_github_rate_limit_stops_the_run_instead_of_failing_every_pr(status):
     report = s.run()
     assert report.stopped_early.startswith("GitHub rate limit")
     assert s.jobs.counts(R) == {"queued": 2}  # nothing marked failed
+
+
+def test_one_pr_the_llm_cannot_answer_is_skipped_and_the_run_continues():
+    from tests.fakes import StatusError
+
+    s = Setup(replies=(StatusError(400), REPLY))
+    # A second real PR, #1566, more discussed than #1565 so it runs first.
+    routes = s.fake.routes
+    for key in [k for k in routes if "/1565" in k]:
+        routes[key.replace("/1565", "/1566")] = routes[key]
+    s.jobs.enqueue(
+        R,
+        [Candidate(1566, "Other", 30, "a")],
+    )
+    report = s.run()
+    by_number = {o.number: o for o in report.outcomes}
+    assert by_number[1566].status == "incomplete"  # the 400 answer
+    assert by_number[1565].status == "written"  # the run went on
+    assert report.stopped_early is None
+    assert s.jobs.rows[(R, 1566)].status == "fetched"  # retried by the next run

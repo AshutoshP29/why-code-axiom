@@ -105,8 +105,13 @@ def ingest(repo, jobs, gh, store, llm, sink: GraphSink | None, *, dry_run=False,
         if result.stopped_early:
             out.status, out.error = "incomplete", result.stopped_early
             jobs.mark(repo, job.number, "fetched", add_calls=out.calls, error=result.stopped_early)
-            report.stopped_early = f"#{job.number}: {result.stopped_early}"
-            break
+            # One PR the providers could not answer is skipped (it stays pending for the next
+            # run). Stop only when nothing more can be done: budget spent or every provider off.
+            if "BudgetExceededError" in result.stopped_early or llm.all_switched_off():
+                report.stopped_early = f"#{job.number}: {result.stopped_early}"
+                break
+            log.warning("#%d incomplete (%s); continuing", job.number, result.stopped_early)
+            continue
 
         checks = [resolve_affects(d.data.affects, index) for d in result.decisions]
         batch = build_pr_graph(
