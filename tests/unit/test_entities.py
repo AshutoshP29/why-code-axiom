@@ -1,6 +1,6 @@
 import pytest
 
-from whycode.extract.entities import (
+from whycode.code.entities import (
     EntityKind,
     UnsupportedFileError,
     is_supported,
