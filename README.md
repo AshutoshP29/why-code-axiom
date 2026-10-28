@@ -54,6 +54,11 @@ costs no calls. `LLM_MAX_CALLS` is a hard cap per run. Gemini is tried first and
 fallback; a provider that keeps failing is skipped for the rest of the run. A decision is kept
 only if every evidence quote is found verbatim (whitespace aside) in the source it cites.
 
+After extraction, each decision's `affects` is checked against the code the PR touched: the PR's
+changed Python files are parsed with tree-sitter (`whycode/code/`), and a file, function, class or
+config key is kept only if it really exists there. Paths are mapped to where the files live today
+(`requests/compat.py` -> `src/requests/compat.py`). Dropped items are printed with a reason.
+
 ## Tests
 
 ```sh

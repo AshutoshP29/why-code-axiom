@@ -231,6 +231,20 @@ def test_config_value_is_whitespace_collapsed_and_clipped():
     assert len(cfg["LONG"].value) == 200
 
 
+def test_config_value_leaves_out_comments():
+    # Modelled on requests' REDIRECT_STATI: editing a comment must not look like a new value.
+    src = (
+        "REDIRECT_STATI = (  # type: ignore[assignment]\n"
+        "    codes.moved,  # 301\n"
+        "    codes.found,  # 302\n"
+        ")\n"
+        "URL = 'http://x/#not-a-comment'  # trailing comment\n"
+    )
+    cfg = by_qualified(parse_file(REPO, "m.py", src), EntityKind.CONFIG_KEY)
+    assert cfg["REDIRECT_STATI"].value == "( codes.moved, codes.found, )"
+    assert cfg["URL"].value == "'http://x/#not-a-comment'"  # a # inside a string stays
+
+
 def test_ids_are_unique(parsed):
     ids = [e.id for e in parsed.entities]
     assert len(ids) == len(set(ids))

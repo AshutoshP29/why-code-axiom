@@ -22,9 +22,40 @@ def test_fetches_pr_thread_and_stores_every_part():
     kinds = {k[1] for k in store.rows}
     assert kinds == {
         "pr", "issue", "issue_comments", "review_comments", "reviews",
-        "pr_commits", "pr_files", "timeline",
+        "pr_commits", "pr_files", "timeline", "blob", "tree",
     }  # fmt: skip
     assert all(k[0] == REPO for k in store.rows)
+
+
+def test_changed_python_files_are_fetched_as_blobs():
+    r, store, fake, _ = run(load_github_fixture("pr_1565.json"))
+    # README.md is not Python and fixture/old.py was removed: neither is fetched.
+    assert r.blobs == {"src/fixture/compat.py": "c0ffee01", "fixture/utils.py": "c0ffee02"}
+    assert store.get(REPO, "blob", "c0ffee01").payload["encoding"] == "base64"
+    assert not any(c.url.path.endswith("/blobs/c0ffee03") for c in fake.calls)
+
+
+def test_blobs_are_never_fetched_twice():
+    routes = load_github_fixture("pr_1565.json")
+    _, store, _, _ = run(routes)
+    _, _, fake, _ = run(routes, store)
+    assert not any("/git/blobs/" in c.url.path for c in fake.calls)
+
+
+def test_current_tree_of_the_default_branch_is_fetched():
+    r, store, fake, _ = run(load_github_fixture("pr_1565.json"))
+    assert r.tree_branch == "main"
+    tree_call = next(c for c in fake.calls if c.url.path.endswith("/git/trees/main"))
+    assert tree_call.url.params["recursive"] == "1"
+    paths = {e["path"] for e in store.get(REPO, "tree", "main").payload["tree"]}
+    assert "lib/fixture/utils.py" in paths
+
+
+def test_no_default_branch_skips_the_tree_but_keeps_the_rest():
+    routes = load_github_fixture("pr_1565.json")
+    del routes["/repos/test/fixture/pulls/1565"]["base"]
+    r, store, _, _ = run(routes)
+    assert r.tree_branch is None and r.blobs and store.get(REPO, "tree", "main") is None
 
 
 def test_linked_issues_from_body_commits_and_timeline():

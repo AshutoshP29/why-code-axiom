@@ -11,7 +11,8 @@ import sys
 from whycode.extract.extractor import DEFAULT_MAX_CHARS, ExtractionResult, extract_thread
 
 
-def print_result(r: ExtractionResult, llm) -> None:
+def print_result(r: ExtractionResult, llm, checks: list | None = None) -> None:
+    """checks[i] is the AffectsCheck for r.decisions[i], when the PR's code is indexed."""
     print(f"chunks: {len(r.chunks)}")
     for c in r.chunks:
         state = "cached" if c.cached else ("would call LLM" if r.dry_run else "called LLM")
@@ -20,6 +21,10 @@ def print_result(r: ExtractionResult, llm) -> None:
         print(f"dry run: 0 API calls; {sum(not c.cached for c in r.chunks)} chunk(s) would call")
         return
     print(f"\naccepted decisions: {len(r.decisions)}")
+    if checks is not None:
+        kept = sum(len(c.kept) for c in checks)
+        dropped = sum(len(c.dropped) for c in checks)
+        print(f"affects checked against the PR's code: {kept} kept, {dropped} dropped")
     for n, d in enumerate(r.decisions, 1):
         x = d.data
         print(f"\n[{n}] {x.summary}")
@@ -27,8 +32,20 @@ def print_result(r: ExtractionResult, llm) -> None:
         print(f"    why: {x.rationale}")
         for alt in x.alternatives:
             print(f"    alternative: {alt}")
-        for a in x.affects:
-            print(f"    affects {a.kind}: {a.path}{'::' + a.name if a.name else ''}")
+        if checks is None:
+            for a in x.affects:
+                print(
+                    f"    affects {a.kind} (unchecked): {a.path}{'::' + a.name if a.name else ''}"
+                )
+        else:
+            for k in checks[n - 1].kept:
+                note = f"  ({k.note})" if k.note else ""
+                print(f"    affects {k.kind.value}: {k.id}{note}")
+            for drop in checks[n - 1].dropped:
+                a = drop.item
+                print(
+                    f"    dropped {a.kind} {a.path}{'::' + a.name if a.name else ''}: {drop.reason}"
+                )
         for e in d.evidence:
             print(f'    "{e.quote}"')
             print(f"      - {e.source.author or '?'}, {(e.source.date or '')[:10]}, {e.source.url}")
@@ -46,6 +63,8 @@ def print_result(r: ExtractionResult, llm) -> None:
 
 
 def main() -> int:
+    from whycode.code.affects import resolve_affects
+    from whycode.code.index import build_pr_code_index
     from whycode.config import ConfigError, get_settings
     from whycode.extract.sources import load_thread
     from whycode.ingest.store import RawStore
@@ -79,7 +98,17 @@ def main() -> int:
             f"sources: {len(thread.sources)} ({sum(len(x.text) for x in thread.sources):,} chars)"
         )
         result = extract_thread(thread, llm, max_chars=args.max_chars, dry_run=args.dry_run)
-        print_result(result, llm)
+        checks = None
+        if not args.dry_run and result.decisions:
+            try:
+                index = build_pr_code_index(store, args.repo, args.pr)
+            except LookupError as exc:
+                print(f"affects not checked: {exc}")
+            else:
+                if index.missing_code:
+                    print(f"note: code not fetched for {index.missing_code}; run fetch_pr again")
+                checks = [resolve_affects(d.data.affects, index) for d in result.decisions]
+        print_result(result, llm, checks)
     finally:
         store.close()
     return 0
