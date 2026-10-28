@@ -78,6 +78,9 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="show what would be sent; no calls")
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
     parser.add_argument("--max-calls", type=int, help="cap this run below LLM_MAX_CALLS")
+    parser.add_argument(
+        "--providers", help="override LLM_PROVIDERS for this run, e.g. 'local' or 'gemini,local'"
+    )
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows defaults to cp1252
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -92,7 +95,8 @@ def main() -> int:
         cache = PgLLMCache(store.conn)
         cache.ensure_schema()
         cap = s.llm_max_calls if args.max_calls is None else min(args.max_calls, s.llm_max_calls)
-        llm = build_llm_client(s, cache, Budget(cap))
+        llm = build_llm_client(s, cache, Budget(cap), order=args.providers)
+        print("providers: " + " -> ".join(f"{p.name}/{p.model}" for p in llm.providers))
         thread = load_thread(store, args.repo, args.pr)
         print(f"{thread.repo}#{thread.number}: {thread.title}")
         print(
