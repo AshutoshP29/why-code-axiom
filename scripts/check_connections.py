@@ -129,6 +129,36 @@ def check_groq(s: Settings, call: bool) -> list[str]:
     return lines
 
 
+def check_local(s: Settings, call: bool) -> list[str]:
+    if not s.local_llm_model:
+        return ["not configured (LOCAL_LLM_MODEL is empty)"]
+    from whycode.llm.providers import LocalProvider
+
+    try:
+        tags = httpx.get(f"{s.local_llm_url}/api/tags", timeout=10).json()
+    except Exception as exc:
+        raise RuntimeError(
+            f"{exc}\n    Start Ollama (open the app, or run: ollama serve)"
+        ) from None
+    models = sorted(m["name"] for m in tags.get("models", []))
+    lines = [f"{len(models)} local models:"]
+    lines += [f"  {'*' if m == s.local_llm_model else ' '} {m}" for m in models]
+    if s.local_llm_model not in models:
+        _fail(
+            lines,
+            f"LOCAL_LLM_MODEL={s.local_llm_model} is not pulled: ollama pull {s.local_llm_model}",
+        )
+    if call:
+        try:
+            reply = LocalProvider(s.local_llm_model, s.local_llm_url).complete_json(
+                "Reply in JSON.", 'Return exactly {"ok": true}'
+            )
+        except Exception as exc:
+            _fail(lines, f"tiny call to {s.local_llm_model} failed: {exc}")
+        lines.append(f"tiny call to {s.local_llm_model}: replied {reply.strip()!r} (free)")
+    return lines
+
+
 def run(settings: Settings, call_llms: bool) -> bool:
     checks: list[tuple[str, Check]] = [
         ("Neo4j Aura", check_neo4j_aura),
@@ -137,6 +167,7 @@ def run(settings: Settings, call_llms: bool) -> bool:
         ("GitHub", check_github),
         ("Gemini", lambda s: check_gemini(s, call_llms)),
         ("Groq", lambda s: check_groq(s, call_llms)),
+        ("Local model", lambda s: check_local(s, call_llms)),
     ]
     all_ok = True
     for name, check in checks:

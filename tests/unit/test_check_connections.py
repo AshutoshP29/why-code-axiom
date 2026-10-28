@@ -55,3 +55,11 @@ def test_all_ok_returns_true(monkeypatch, capsys):
     monkeypatch.setattr(check_connections, "check_groq", lambda s, call: ["fine"])
     assert check_connections.run(s, call_llms=False) is True
     assert "FAIL" not in capsys.readouterr().out
+
+
+def test_local_model_not_configured_needs_no_network(monkeypatch):
+    s = _settings(monkeypatch)
+    monkeypatch.delenv("LOCAL_LLM_MODEL", raising=False)
+    assert check_connections.check_local(s, call=True) == [
+        "not configured (LOCAL_LLM_MODEL is empty)"
+    ]
