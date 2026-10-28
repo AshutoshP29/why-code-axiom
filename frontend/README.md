@@ -11,12 +11,20 @@ Testing Library.
 ```sh
 cd frontend
 npm install
-npm run dev            # http://localhost:5173, on sample data
 ```
 
-With no API configured, the app runs on **sample data** (`src/api/sample.ts`) and shows a
-"Sample data" badge in the top bar. Every flow in the user journey works this way, including
-flagging gaps and adding a repository (a simulated 45-second ingestion).
+The app runs either on sample data or against the real API. Which one is decided by
+`VITE_API_URL` when the dev server starts (or when a build is made), not by a setting in the app.
+
+### On sample data (the default)
+
+```sh
+npm run dev            # http://localhost:5173
+```
+
+With `VITE_API_URL` unset, the app runs on **sample data** (`src/api/sample.ts`) and shows a
+"Sample data" badge in the top bar. No backend is needed. Every flow in the user journey works
+this way, including flagging gaps and adding a repository (a simulated 45-second ingestion).
 
 On sample data, a question asked with no entity picked is matched by the words it shares with
 entity names (`src/api/mock.ts`). Three to try from the Home ask bar:
@@ -25,15 +33,32 @@ entity names (`src/api/mock.ts`). Three to try from the Home ask bar:
 - "why is there no default timeout?": matched to `timeout`, hedged
 - "why did requests drop chardet?": nothing matches, so it is refused with no entity
 
-To use the real backend, start the FastAPI app on port 8000 and point the frontend at it:
+### Against the real API
+
+1. Start the FastAPI backend so it listens on `http://127.0.0.1:8000`, with every path under
+   `/api` (`/api/repos`, `/api/ask`, and the rest of the table below).
+2. Start the frontend with `VITE_API_URL=/api`:
 
 ```sh
 VITE_API_URL=/api npm run dev                  # macOS / Linux / Git Bash
 $env:VITE_API_URL="/api"; npm run dev          # Windows PowerShell
 ```
 
-`/api` goes through the Vite dev proxy to `http://localhost:8000`, so no CORS setup is needed in
-development. An absolute URL such as `http://localhost:8000/api` also works.
+The dev server passes every `/api` request to `http://127.0.0.1:8000` with the path and query
+unchanged (`vite.config.ts`), so the browser only talks to `localhost:5173` and the backend needs
+no CORS setup. The "Sample data" badge is gone, and every screen shows what the API returns. If
+the backend is not running, the screens say "The WhyCode API is not reachable at
+http://127.0.0.1:8000" rather than "Bad Gateway".
+
+In PowerShell the variable stays set for the rest of that terminal session. To go back to sample
+data, run `Remove-Item Env:VITE_API_URL` or open a new terminal.
+
+A production build reads `VITE_API_URL` when it is built: `VITE_API_URL=/api npm run build`, then
+`npm run preview` serves `dist/` through the same proxy. An absolute URL such as
+`http://127.0.0.1:8000/api` also works, but then the backend must allow the frontend's origin
+(CORS).
+
+### Tests and checks
 
 ```sh
 npm test               # unit and screen tests (no network)
