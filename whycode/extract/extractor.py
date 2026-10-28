@@ -113,7 +113,7 @@ def _split(sources: list[Source]) -> tuple[list[Source], list[Source]] | None:
     return body + rest[:cut], body + rest[cut:]
 
 
-def _cached_halves(llm, thread, sources, label, parts, user):
+def _cached_halves(llm, thread, sources, label, parts, user, code_outline=None):
     """If this part is not cached but its split halves are, return them for the queue."""
     if llm.is_cached(SYSTEM, user, prompt_version=PROMPT_VERSION):
         return None
@@ -122,9 +122,10 @@ def _cached_halves(llm, thread, sources, label, parts, user):
         return None
     labelled = [(f"{label}.1", halves[0]), (f"{label}.2", halves[1])]
     for sub_label, sub in labelled:
-        sub_user = build_user_prompt(thread, sub, sub_label, parts)
+        sub_user = build_user_prompt(thread, sub, sub_label, parts, code_outline)
         if not llm.is_cached(SYSTEM, sub_user, prompt_version=PROMPT_VERSION) and not (
-            _split(sub) and _cached_halves(llm, thread, sub, sub_label, parts, sub_user)
+            _split(sub)
+            and _cached_halves(llm, thread, sub, sub_label, parts, sub_user, code_outline)
         ):
             return None
     index = int(label.split(".")[0])
@@ -222,6 +223,7 @@ def extract_thread(
     *,
     max_chars: int = DEFAULT_MAX_CHARS,
     dry_run: bool = False,
+    code_outline: str | None = None,
 ) -> ExtractionResult:
     chunks = chunk_sources(thread, max_chars)
     plans, raw, rejections, failed = [], [], [], []
@@ -229,8 +231,8 @@ def extract_thread(
     queue = [(str(i), i, sources) for i, sources in enumerate(chunks, start=1)]
     while queue:
         label, i, sources = queue.pop(0)
-        user = build_user_prompt(thread, sources, label, len(chunks))
-        halves = _cached_halves(llm, thread, sources, label, len(chunks), user)
+        user = build_user_prompt(thread, sources, label, len(chunks), code_outline)
+        halves = _cached_halves(llm, thread, sources, label, len(chunks), user, code_outline)
         if halves:  # this part was split on an earlier run; replay its halves from the cache
             queue[0:0] = halves
             continue
