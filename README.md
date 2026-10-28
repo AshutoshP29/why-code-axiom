@@ -73,6 +73,7 @@ whycode/
   ingest/          GitHub fetch -> Postgres raw cache
   graph/           Neo4j driver wrapper, schema runner, MERGE-only writers
     schema.cypher  the graph contract (source of truth)
+  code/            tree-sitter parser: files, classes, functions, config keys
   extract/         LLM decision extraction (prompt + pydantic models)
   llm/             llm_client: Gemini/Groq, cache, call budget, retries
   agent/ api/      later phases

@@ -6,7 +6,7 @@ The Repo node itself uses the bare repo, "psf/requests". Nothing else should bui
 import hashlib
 import re
 
-KINDS = frozenset({"pr", "issue", "commit", "dec", "ev", "user", "file", "fn", "mod", "cfg"})
+KINDS = frozenset({"pr", "issue", "commit", "dec", "ev", "user", "file", "cls", "fn", "mod", "cfg"})
 
 _REPO_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*/[a-z0-9_.-]+$")
 
