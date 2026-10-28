@@ -96,6 +96,10 @@ def classify_error(exc: BaseException) -> str:
     return "other"
 
 
+def _is_hosted(provider) -> bool:
+    return getattr(provider, "counts_against_budget", True)
+
+
 def retry_after_seconds(exc: BaseException) -> float | None:
     """The provider's own retry-after hint, if the SDK exposes the HTTP response."""
     headers = getattr(getattr(exc, "response", None), "headers", None)
@@ -135,12 +139,18 @@ class LLMClient:
         self.cache_hits = 0
 
     def is_cached(self, system: str, user: str, *, prompt_version: str) -> bool:
-        """True if any provider's answer to this exact request is cached. Never calls an API."""
+        """True if complete_json would answer this from the cache. Never calls an API.
+
+        Same rule as complete_json: a cached local answer only counts while no hosted provider
+        is usable.
+        """
         prompt_input = f"{system}\n\n{user}"
-        return any(
-            self.cache.get(cache_key(prompt_version, p.model, prompt_input)) is not None
-            for p in self.providers
-        )
+        for p in self.providers:
+            if self.cache.get(cache_key(prompt_version, p.model, prompt_input)) is None:
+                continue
+            if _is_hosted(p) or not self._hosted_usable():
+                return True
+        return False
 
     def complete_json(
         self,
@@ -152,11 +162,21 @@ class LLMClient:
         dry_run: bool = False,
     ) -> LLMResult:
         prompt_input = f"{system}\n\n{user}"
-        for p in self.providers:  # a cached answer from any provider is good enough
+        # A cached hosted answer is always used. A cached local answer only stands in when no
+        # hosted provider can answer now: a weaker fallback must never block a better model.
+        local_hit = None
+        for p in self.providers:
             hit = self.cache.get(cache_key(prompt_version, p.model, prompt_input))
-            if hit is not None:
+            if hit is None:
+                continue
+            if _is_hosted(p):
                 self.cache_hits += 1
                 return LLMResult(hit, p.name, p.model, cached=True, dry_run=dry_run)
+            local_hit = local_hit or (p, hit)
+        if local_hit and not self._hosted_usable():
+            p, hit = local_hit
+            self.cache_hits += 1
+            return LLMResult(hit, p.name, p.model, cached=True, dry_run=dry_run)
         if dry_run:
             return LLMResult(None, None, self.providers[0].model, cached=False, dry_run=True)
 
@@ -170,6 +190,10 @@ class LLMClient:
                 break
             attempted = 0
             for p in live:
+                if local_hit and p is local_hit[0]:
+                    # Hosted providers failed: the local answer we already have is the fallback.
+                    self.cache_hits += 1
+                    return LLMResult(local_hit[1], p.name, p.model, cached=True)
                 if getattr(p, "counts_against_budget", True):
                     if self.budget.remaining == 0:
                         continue  # spent: skip hosted providers, a free local one may still answer
@@ -213,6 +237,12 @@ class LLMClient:
             log.warning("all providers failed transiently; retrying in %.0fs", wait)
             self._sleep(wait)
         raise LLMError("all LLM providers failed: " + "; ".join(failures), all_reasons)
+
+    def _hosted_usable(self) -> bool:
+        """Could a hosted provider be called right now (not switched off, budget left)?"""
+        return self.budget.remaining > 0 and any(
+            _is_hosted(p) and p.name not in self.tripped for p in self.providers
+        )
 
     def _note_failure(self, name: str, reason: str) -> None:
         if reason not in TRIPS_BREAKER:

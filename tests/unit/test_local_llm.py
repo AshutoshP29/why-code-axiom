@@ -148,3 +148,48 @@ def test_unknown_or_empty_provider_list_is_an_error(monkeypatch):
     monkeypatch.delenv("LOCAL_LLM_MODEL", raising=False)
     with pytest.raises(ValueError, match="no LLM provider configured"):
         build_providers(settings(monkeypatch), "local")
+
+
+# --- cached local answers never block a hosted model ---------------------------------------------
+
+
+def _cached_local_client(gem_replies, budget=5):
+    cache = MemoryLLMCache()
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    LLMClient([local], cache, Budget(0)).complete_json("s", "u", prompt_version="v")  # cache it
+    gem = FakeProvider("gemini", "g", gem_replies)
+    local2 = FreeProvider("local", "qwen", ['{"from": "local again"}'])
+    return LLMClient([gem, local2], cache, Budget(budget)), gem, local2
+
+
+def test_cached_local_answer_does_not_block_a_hosted_model():
+    client, gem, _ = _cached_local_client(['{"from": "gemini"}'])
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.provider == "gemini" and not r.cached and len(gem.calls) == 1
+
+
+def test_cached_local_answer_is_used_when_no_budget_is_left():
+    client, gem, local = _cached_local_client(['{"from": "gemini"}'], budget=0)
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.provider == "local" and r.cached and gem.calls == [] and local.calls == []
+
+
+def test_cached_local_answer_is_the_fallback_when_hosted_fails():
+    client, gem, local = _cached_local_client([StatusError(400)])
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.text == '{"from": "local"}' and r.cached
+    assert len(gem.calls) == 1 and local.calls == []  # the local model is not asked again
+
+
+def test_cached_hosted_answer_wins_over_cached_local():
+    client, gem, _ = _cached_local_client(['{"from": "gemini"}'])
+    client.complete_json("s", "u", prompt_version="v")  # gemini answers and is cached
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.provider == "gemini" and r.cached and len(gem.calls) == 1
+
+
+def test_is_cached_follows_the_same_rule():
+    client, _, _ = _cached_local_client(['{"from": "gemini"}'])
+    assert client.is_cached("s", "u", prompt_version="v") is False  # gemini would be asked
+    spent, _, _ = _cached_local_client([], budget=0)
+    assert spent.is_cached("s", "u", prompt_version="v") is True  # local answer would be used
