@@ -135,5 +135,7 @@ def resolve_affects(items: list[Affected], index: PrCodeIndex) -> AffectsCheck:
             continue
         if item.kind == "function" and hit.kind is EntityKind.CLASS:
             note = "is a class" if note is None else f"{note}; is a class"
+        elif item.kind == "class" and hit.kind is EntityKind.FUNCTION:
+            note = "is a function" if note is None else f"{note}; is a function"
         keep(ResolvedAffect(hit.kind, hit.id, f.graph_path, hit.qualified_name, note))
     return out

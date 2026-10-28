@@ -22,9 +22,9 @@ class EvidenceQuote(_Strict):
 
 
 class Affected(_Strict):
-    kind: Literal["file", "function", "config"]
+    kind: Literal["file", "class", "function", "config"]
     path: str = Field(min_length=1)  # file path as it appears in the PR
-    name: str | None = None  # qualified function name or config key; None for kind="file"
+    name: str | None = None  # qualified class/function name or config key; None for files
 
 
 class ExtractedDecision(_Strict):

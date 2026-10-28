@@ -66,6 +66,7 @@ def main() -> int:
     from whycode.code.affects import resolve_affects
     from whycode.code.index import build_pr_code_index
     from whycode.config import ConfigError, get_settings
+    from whycode.extract.prompt import render_code_outline
     from whycode.extract.sources import load_thread
     from whycode.ingest.store import RawStore
     from whycode.llm.cache import PgLLMCache
@@ -77,6 +78,9 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="show what would be sent; no calls")
     parser.add_argument("--max-chars", type=int, default=DEFAULT_MAX_CHARS)
     parser.add_argument("--max-calls", type=int, help="cap this run below LLM_MAX_CALLS")
+    parser.add_argument(
+        "--providers", help="override LLM_PROVIDERS for this run, e.g. 'local' or 'gemini,local'"
+    )
     args = parser.parse_args()
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # Windows defaults to cp1252
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(message)s")
@@ -91,19 +95,27 @@ def main() -> int:
         cache = PgLLMCache(store.conn)
         cache.ensure_schema()
         cap = s.llm_max_calls if args.max_calls is None else min(args.max_calls, s.llm_max_calls)
-        llm = build_llm_client(s, cache, Budget(cap))
+        llm = build_llm_client(s, cache, Budget(cap), order=args.providers)
+        print("providers: " + " -> ".join(f"{p.name}/{p.model}" for p in llm.providers))
         thread = load_thread(store, args.repo, args.pr)
         print(f"{thread.repo}#{thread.number}: {thread.title}")
         print(
             f"sources: {len(thread.sources)} ({sum(len(x.text) for x in thread.sources):,} chars)"
         )
-        result = extract_thread(thread, llm, max_chars=args.max_chars, dry_run=args.dry_run)
+        try:
+            index = build_pr_code_index(store, args.repo, args.pr)
+        except LookupError:
+            index = None
+        outline = render_code_outline(index) if index and index.parsed else None
+        if outline is None:
+            print("note: no parsed code for this PR; the prompt has no code outline")
+        result = extract_thread(
+            thread, llm, max_chars=args.max_chars, dry_run=args.dry_run, code_outline=outline
+        )
         checks = None
         if not args.dry_run and result.decisions:
-            try:
-                index = build_pr_code_index(store, args.repo, args.pr)
-            except LookupError as exc:
-                print(f"affects not checked: {exc}")
+            if index is None:
+                print("affects not checked: the PR's code is not indexed; run fetch_pr")
             else:
                 if index.missing_code:
                     print(f"note: code not fetched for {index.missing_code}; run fetch_pr again")

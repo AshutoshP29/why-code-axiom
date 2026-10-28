@@ -2,7 +2,9 @@
 
 - Providers are tried in order (Gemini, then Groq); any provider error falls through to the next.
 - Every response is cached by sha256(prompt_version + model + input); a hit costs no call.
-- A hard budget (LLM_MAX_CALLS) counts every real API attempt, successful or not.
+- A hard budget (LLM_MAX_CALLS) counts every hosted-API attempt, successful or not. Once it
+  is spent, hosted providers are skipped and a free local provider (if any) still answers;
+  with none left, BudgetExceededError is raised before any call.
 - A reply that is cut off or is not valid JSON counts as a failed attempt: it is never cached,
   and the next provider is tried.
 - Circuit breaker: a provider that is unavailable or times out trip_after times in a row is
@@ -89,9 +91,13 @@ def classify_error(exc: BaseException) -> str:
         return "rate_limit"
     if "Timeout" in name:
         return "timeout"
-    if "Connection" in name:
+    if "Connect" in name:  # ConnectionError, APIConnectionError, httpx.ConnectError
         return "unavailable"
     return "other"
+
+
+def _is_hosted(provider) -> bool:
+    return getattr(provider, "counts_against_budget", True)
 
 
 def retry_after_seconds(exc: BaseException) -> float | None:
@@ -133,12 +139,18 @@ class LLMClient:
         self.cache_hits = 0
 
     def is_cached(self, system: str, user: str, *, prompt_version: str) -> bool:
-        """True if any provider's answer to this exact request is cached. Never calls an API."""
+        """True if complete_json would answer this from the cache. Never calls an API.
+
+        Same rule as complete_json: a cached local answer only counts while no hosted provider
+        is usable.
+        """
         prompt_input = f"{system}\n\n{user}"
-        return any(
-            self.cache.get(cache_key(prompt_version, p.model, prompt_input)) is not None
-            for p in self.providers
-        )
+        for p in self.providers:
+            if self.cache.get(cache_key(prompt_version, p.model, prompt_input)) is None:
+                continue
+            if _is_hosted(p) or not self._hosted_usable():
+                return True
+        return False
 
     def complete_json(
         self,
@@ -150,11 +162,21 @@ class LLMClient:
         dry_run: bool = False,
     ) -> LLMResult:
         prompt_input = f"{system}\n\n{user}"
-        for p in self.providers:  # a cached answer from any provider is good enough
+        # A cached hosted answer is always used. A cached local answer only stands in when no
+        # hosted provider can answer now: a weaker fallback must never block a better model.
+        local_hit = None
+        for p in self.providers:
             hit = self.cache.get(cache_key(prompt_version, p.model, prompt_input))
-            if hit is not None:
+            if hit is None:
+                continue
+            if _is_hosted(p):
                 self.cache_hits += 1
                 return LLMResult(hit, p.name, p.model, cached=True, dry_run=dry_run)
+            local_hit = local_hit or (p, hit)
+        if local_hit and not self._hosted_usable():
+            p, hit = local_hit
+            self.cache_hits += 1
+            return LLMResult(hit, p.name, p.model, cached=True, dry_run=dry_run)
         if dry_run:
             return LLMResult(None, None, self.providers[0].model, cached=False, dry_run=True)
 
@@ -166,8 +188,17 @@ class LLMClient:
             if not live:
                 failures.append("every provider is switched off for this run (unavailable)")
                 break
+            attempted = 0
             for p in live:
-                self.budget.take()  # raises before any call once the budget is spent
+                if local_hit and p is local_hit[0]:
+                    # Hosted providers failed: the local answer we already have is the fallback.
+                    self.cache_hits += 1
+                    return LLMResult(local_hit[1], p.name, p.model, cached=True)
+                if getattr(p, "counts_against_budget", True):
+                    if self.budget.remaining == 0:
+                        continue  # spent: skip hosted providers, a free local one may still answer
+                    self.budget.take()
+                attempted += 1
                 self.api_calls += 1
                 try:
                     text = p.complete_json(system, user)
@@ -194,6 +225,11 @@ class LLMClient:
                     repo=repo,
                 )
                 return LLMResult(text, p.name, p.model, cached=False)
+            if attempted == 0:
+                raise BudgetExceededError(
+                    f"LLM call budget of {self.budget.max_calls} is used up "
+                    "and no free provider is available"
+                )
             if not set(reasons) <= TRANSIENT or round_no == self.max_rounds - 1:
                 break
             # Wait as long as the providers asked (Groq says exactly), within max_wait_s.
@@ -201,6 +237,12 @@ class LLMClient:
             log.warning("all providers failed transiently; retrying in %.0fs", wait)
             self._sleep(wait)
         raise LLMError("all LLM providers failed: " + "; ".join(failures), all_reasons)
+
+    def _hosted_usable(self) -> bool:
+        """Could a hosted provider be called right now (not switched off, budget left)?"""
+        return self.budget.remaining > 0 and any(
+            _is_hosted(p) and p.name not in self.tripped for p in self.providers
+        )
 
     def _note_failure(self, name: str, reason: str) -> None:
         if reason not in TRIPS_BREAKER:
@@ -216,15 +258,41 @@ class LLMClient:
             )
 
 
-def build_llm_client(settings, cache: Cache, budget: Budget | None = None) -> LLMClient:
-    """Gemini first, Groq as fallback, models and budget from settings."""
-    from whycode.config import redact
-    from whycode.llm.providers import GeminiProvider, GroqProvider
+PROVIDER_NAMES = ("gemini", "groq", "local")
 
-    providers = [
-        GeminiProvider(settings.gemini_api_key.get_secret_value(), settings.gemini_model),
-        GroqProvider(settings.groq_api_key.get_secret_value(), settings.groq_model),
-    ]
+
+def build_providers(settings, order: str | None = None) -> list:
+    """Providers in the order given (default LLM_PROVIDERS). "local" is skipped when
+    LOCAL_LLM_MODEL is not set; an unknown name is an error."""
+    from whycode.llm.providers import GeminiProvider, GroqProvider, LocalProvider
+
+    providers = []
+    for name in (n.strip().lower() for n in (order or settings.llm_providers).split(",")):
+        if not name:
+            continue
+        if name == "gemini":
+            key = settings.gemini_api_key.get_secret_value()
+            providers.append(GeminiProvider(key, settings.gemini_model))
+        elif name == "groq":
+            key = settings.groq_api_key.get_secret_value()
+            providers.append(GroqProvider(key, settings.groq_model))
+        elif name == "local":
+            if settings.local_llm_model:
+                providers.append(LocalProvider(settings.local_llm_model, settings.local_llm_url))
+        else:
+            raise ValueError(f"unknown LLM provider {name!r}; use {', '.join(PROVIDER_NAMES)}")
+    if not providers:
+        raise ValueError("no LLM provider configured (check LLM_PROVIDERS and LOCAL_LLM_MODEL)")
+    return providers
+
+
+def build_llm_client(
+    settings, cache: Cache, budget: Budget | None = None, order: str | None = None
+) -> LLMClient:
+    """Providers from settings (or `order`), budget from LLM_MAX_CALLS."""
+    from whycode.config import redact
+
+    providers = build_providers(settings, order)
     return LLMClient(
         providers,
         cache,
