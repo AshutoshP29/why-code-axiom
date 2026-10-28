@@ -93,6 +93,7 @@ CREATE INDEX person_repo          IF NOT EXISTS FOR (p:Person)      ON (p.repo);
 // ---------- 4. Relationships (both ends are always in the same repo) ----------
 // (:PullRequest)-[:CONTAINS]->(:Commit)
 // (:PullRequest)-[:CLOSES]->(:Issue)              // "fixes #N", API closing references
+// (:PullRequest)-[:REFERENCES]->(:Issue)          // other issues the PR body links to
 // (:Commit)-[:REFERENCES]->(:Issue|:PullRequest)  // "#N" in the message, incl. "(#6767)" in subjects
 // (:Commit)-[:MODIFIES {added, removed}]->(:File|:Class|:Function|:ConfigKey)
 // (:Commit)-[:REVERTS]->(:Commit)                 // from "Revert ..." commits and git revert trailers

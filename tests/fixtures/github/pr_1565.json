@@ -20,7 +20,11 @@
       "repo": {
         "default_branch": "main"
       }
-    }
+    },
+    "created_at": "2021-06-18T08:00:00Z",
+    "updated_at": "2021-07-01T10:00:00Z",
+    "comments": 2,
+    "review_comments": 1
   },
   "/repos/test/fixture/issues/1565/comments": [
     {
@@ -60,7 +64,8 @@
         "login": "bob"
       },
       "state": "APPROVED",
-      "body": ""
+      "body": "",
+      "submitted_at": "2021-06-30T12:00:00Z"
     }
   ],
   "/repos/test/fixture/pulls/1565/commits": [
@@ -72,7 +77,11 @@
           "name": "alice",
           "date": "2021-06-19T08:00:00Z"
         }
-      }
+      },
+      "author": {
+        "login": "alice"
+      },
+      "html_url": "https://github.com/test/fixture/commit/1111111111111111111111111111111111111111"
     }
   ],
   "/repos/test/fixture/pulls/1565/files": [
@@ -80,17 +89,26 @@
       "filename": "src/fixture/compat.py",
       "status": "renamed",
       "previous_filename": "fixture/compat.py",
-      "sha": "c0ffee01"
+      "sha": "c0ffee01",
+      "additions": 2,
+      "deletions": 2,
+      "patch": "@@ -1,8 +1,8 @@\n \"\"\"Compatibility shims.\"\"\"\n DEFAULT_ENCODING = \"utf-8\"  # what we assume when nothing is detected\n-MAX_BYTES = 1024\n+MAX_BYTES = 4096\n \n \n class Detector:\n     def detect(self, data, limit=MAX_BYTES):\n-        return \"ascii\"\n+        return DEFAULT_ENCODING\n"
     },
     {
       "filename": "fixture/utils.py",
       "status": "modified",
-      "sha": "c0ffee02"
+      "sha": "c0ffee02",
+      "additions": 0,
+      "deletions": 1,
+      "patch": "@@ -4,3 +4,2 @@\n def to_text(data, encoding=DEFAULT_ENCODING):\n     return data.decode(encoding)\n-    # unreachable\n"
     },
     {
       "filename": "README.md",
       "status": "modified",
-      "sha": "c0ffee03"
+      "sha": "c0ffee03",
+      "additions": 1,
+      "deletions": 0,
+      "patch": "@@ -1 +1,2 @@\n # Fixture\n+Now MIT.\n"
     },
     {
       "filename": "fixture/old.py",
@@ -115,7 +133,12 @@
     "number": 1500,
     "title": "LGPL dependency",
     "state": "closed",
-    "body": "X is LGPL."
+    "body": "X is LGPL.",
+    "html_url": "https://github.com/test/fixture/issues/1500",
+    "user": {
+      "login": "dave"
+    },
+    "created_at": "2021-05-01T00:00:00Z"
   },
   "/repos/test/fixture/issues/1500/comments": [
     {
@@ -130,21 +153,36 @@
     "number": 1501,
     "title": "Remove X",
     "state": "closed",
-    "body": ""
+    "body": "",
+    "html_url": "https://github.com/test/fixture/issues/1501",
+    "user": {
+      "login": "dave"
+    },
+    "created_at": "2021-05-01T00:00:00Z"
   },
   "/repos/test/fixture/issues/1501/comments": [],
   "/repos/test/fixture/issues/1400": {
     "number": 1400,
     "title": "Encoding detection is slow",
     "state": "open",
-    "body": ""
+    "body": "",
+    "html_url": "https://github.com/test/fixture/issues/1400",
+    "user": {
+      "login": "dave"
+    },
+    "created_at": "2021-05-01T00:00:00Z"
   },
   "/repos/test/fixture/issues/1400/comments": [],
   "/repos/test/fixture/issues/1502": {
     "number": 1502,
     "title": "Track licence",
     "state": "closed",
-    "body": ""
+    "body": "",
+    "html_url": "https://github.com/test/fixture/issues/1502",
+    "user": {
+      "login": "dave"
+    },
+    "created_at": "2021-05-01T00:00:00Z"
   },
   "/repos/test/fixture/issues/1502/comments": [],
   "/repos/test/fixture/git/blobs/c0ffee01": {

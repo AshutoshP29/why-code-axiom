@@ -59,6 +59,19 @@ changed Python files are parsed with tree-sitter (`whycode/code/`), and a file, 
 config key is kept only if it really exists there. Paths are mapped to where the files live today
 (`requests/compat.py` -> `src/requests/compat.py`). Dropped items are printed with a reason.
 
+### Phase 1 slice: one PR end to end
+
+```sh
+uv run python -m whycode.slice --repo psf/requests --pr 5797                # writes to Aura
+uv run python -m whycode.slice --repo psf/requests --pr 5797 --target test  # local container
+```
+
+Fetches the PR, extracts its decisions (from the LLM cache when possible), writes the graph to
+Neo4j with MERGE (re-running changes nothing; re-extraction replaces a PR's decisions) and answers
+query 5a: the current decision for the code the extraction linked most, with its verbatim
+evidence, URLs, people and date. It also shows a refusal for code the PR changed that no decision
+explains: facts only (which commit changed it, who last did), never an invented reason.
+
 ## Local model (optional)
 
 A model served by [Ollama](https://ollama.com) on this machine can extract too. It costs no API
