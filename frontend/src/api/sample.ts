@@ -1,6 +1,7 @@
 // Sample data that mirrors the Figma designs, so the screens work before the API exists.
-// One item is real, as the graph holds it: the answer for Response.apparent_encoding (PR #5797
-// replaced chardet with charset_normalizer). Its people, dates, quotes and links are real.
+// Two items are real, as the graph holds them: the answer for Response.apparent_encoding (PR #5797
+// replaced chardet with charset_normalizer) and the refusal for check_compatibility (changed by the
+// PR's commit 3e798b9, with no recorded reason). Their people, dates, quotes and links are real.
 // Everything else (the maintainer_* people, other PRs, issues and commits) is made up, and its links
 // open GitHub searches rather than invented pages. Scores and counts are made up throughout.
 // Every id is built the way whycode/ids.py builds it. The UI shows "Sample data" while this is in use.
@@ -63,7 +64,6 @@ const FULL_SHA: Record<string, string> = {
   '0b9d7c4': '0b9d7c433279465671fe579d0fb5035ae7ab8277',
   '2e6a9f3': '2e6a9f39d07dc50a99667e1bed31ecb5a7f7c68f',
   '3c9b2e7': '3c9b2e7ea5c00e182155e3358d8333d6390a8f5c',
-  e4f5a6b: 'e4f5a6bcbab96414596b7cd1f2f72b62d926e7d8',
 }
 
 function fullSha(short: string): string {
@@ -114,6 +114,7 @@ function cfg(path: string, key: string, qualified = key): Entity {
   return { id: id('cfg', key), kind: 'config', name: key, qualified_name: qualified, path }
 }
 
+const INIT = 'src/requests/__init__.py'
 const SESSIONS = 'src/requests/sessions.py'
 const ADAPTERS = 'src/requests/adapters.py'
 const AUTH = 'src/requests/auth.py'
@@ -122,11 +123,13 @@ const UTILS = 'src/requests/utils.py'
 
 // Function and class names are the ones in psf/requests, as whycode/code/entities.py parses them.
 export const E = {
+  init: file(INIT),
   sessions: file(SESSIONS),
   adapters: file(ADAPTERS),
   auth: file(AUTH),
   models: file(MODELS),
   utils: file(UTILS),
+  checkCompatibility: fn(INIT, 'check_compatibility'),
   sessionClass: cls(SESSIONS, 'Session'),
   // The redirect methods live on the mixin that Session inherits from, not on Session itself.
   rebuildAuth: fn(SESSIONS, 'SessionRedirectMixin.rebuild_auth'),
@@ -171,6 +174,7 @@ export const EXPLORER: Explorer = {
     ]),
     item(E.models, 5, false, [item(E.apparentEncoding, 1), item(E.text, 2), item(E.iterContent, 1), item(E.json, 1)]),
     item(E.utils, 2, false, [item(E.netrc, 1), item(E.bypassProxies, 1)]),
+    item(E.init, 0, false, [item(E.checkCompatibility, 0)]),
   ],
   config_keys: [
     item(E.maxRetries, 5, true),
@@ -317,8 +321,8 @@ export const OVERVIEW: Overview = {
     },
     {
       outcome: 'refused',
-      entity: E.poolMaxsize,
-      question: 'Why is pool_maxsize 10?',
+      entity: E.checkCompatibility,
+      question: 'Why does check_compatibility cap the charset_normalizer version?',
       summary: 'No recorded reason, so it lists facts and who to ask.',
     },
   ],
@@ -543,12 +547,14 @@ const APPARENT_ENCODING: AnsweredAnswer = {
       node(E.apparentEncoding.id, 'entity', 'Response.apparent_encoding', { entity_id: E.apparentEncoding.id }),
       node(id('pr', String(PR_5797)), 'pull_request', `PR #${PR_5797}`, { url: realPr(PR_5797).url }),
       node(id('commit', SWITCH_SHA), 'commit', SWITCH_SHA.slice(0, 7), { url: realCommit(SWITCH_SHA).url }),
+      node(E.checkCompatibility.id, 'entity', 'requests.check_compatibility', { entity_id: E.checkCompatibility.id }),
     ],
     edges: [
       edge(AE1.id, E.apparentEncoding.id, 'AFFECTS'),
       edge(AE1.id, id('pr', String(PR_5797)), 'DECIDED_IN'),
       edge(id('pr', String(PR_5797)), id('commit', SWITCH_SHA), 'CONTAINS'),
       edge(id('commit', SWITCH_SHA), E.apparentEncoding.id, 'MODIFIES'),
+      edge(id('commit', SWITCH_SHA), E.checkCompatibility.id, 'MODIFIES'),
     ],
   },
 }
@@ -832,45 +838,40 @@ const TIMEOUT: HedgedAnswer = {
   },
 }
 
-const POOL_MAXSIZE: RefusedAnswer = {
+// Real, apart from the scores: the graph has a commit that changed check_compatibility, but no
+// decision that affects it, so it gives that fact and no reason (as whycode/graph/queries.py does).
+const CHECK_COMPATIBILITY: RefusedAnswer = {
   verdict: 'refused',
-  question: 'Why is HTTPAdapter.pool_maxsize 10 by default?',
-  entity: E.poolMaxsize,
+  question: 'Why does check_compatibility cap the charset_normalizer version?',
+  entity: E.checkCompatibility,
   matched_by: 'selected',
   match_score: null,
-  confidence: 0.18,
+  confidence: 0.12,
   thresholds: THRESHOLDS,
   partial_history: false,
   reason:
-    'The graph has no decision, discussion or incident that explains this value. Giving a reason would mean guessing, so WhyCode will not. Here is what it can show instead.',
+    'The graph has no recorded decision for check_compatibility. It knows which commit changed it, but those are facts, not reasons, so WhyCode will not guess why. Here is what it can show instead.',
   known_facts: [
     {
-      title: 'Introduced in commit e4f5a6b, 2012-05-02',
-      detail: 'Message: "Add connection pooling". No pull request or issue is linked to it.',
-      meta: ['@maintainer_a'],
-      source: commit('e4f5a6b', 'connection pooling'),
-    },
-    {
-      title: 'Value unchanged since',
-      detail:
-        'Three later commits touched the line (formatting, rename, type hints). None changed the number or explained it.',
-      meta: ['3 commits, 2013 to 2022'],
-      source: code(ADAPTERS, 'pool_maxsize'),
+      title: "Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      detail: 'changed it: +14 / -6 lines',
+      meta: ['2021-07-06', '@ashb'],
+      source: realCommit(SWITCH_SHA),
     },
   ],
   related: [
     {
-      title: 'PR #2210: make pool size configurable from the Session',
-      match_score: 0.31,
-      source: pr(2210, 'pool_maxsize'),
+      title: "PR #5797: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      match_score: 0.36,
+      source: realPr(PR_5797),
     },
   ],
-  history_url: `${GH}/commits/main/${ADAPTERS}`,
-  who_to_ask: [person('maintainer_a', 'Wrote the line', true, '2025-09-01')],
+  history_url: `${GH}/commits/main/${INIT}`,
+  who_to_ask: [person('ashb', 'Last changed it', false, '2021-07-06')],
   confidence_factors: [
-    { label: 'Entity match', value: 0.92, display: '92%', tone: 'good' },
-    { label: 'Evidence directness', value: 0.06, display: '6%', tone: 'bad' },
-    { label: 'Independent sources', value: 0.02, display: '0 of 2 needed', tone: 'bad' },
+    { label: 'Entity match', value: 0.96, display: '96%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.05, display: '5%', tone: 'bad' },
+    { label: 'Independent sources', value: 0, display: '0 of 2 needed', tone: 'bad' },
     { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
   ],
 }
@@ -881,7 +882,7 @@ export const ANSWERS: Record<string, Answer> = {
   [E.maxRetries.id]: MAX_RETRIES,
   [E.verify.id]: VERIFY,
   [E.timeout.id]: TIMEOUT,
-  [E.poolMaxsize.id]: POOL_MAXSIZE,
+  [E.checkCompatibility.id]: CHECK_COMPATIBILITY,
 }
 
 /** What the API says for an item the sample data knows nothing about. */
@@ -951,7 +952,8 @@ const lineageCommit = (
   decision_id: decision?.id ?? null,
 })
 
-// PR #5797's only commit, the one the graph has for Response.apparent_encoding.
+// The commit the graph has for both real items. It is linked to a decision only where the
+// decision affects the item: Response.apparent_encoding, not check_compatibility.
 const switchCommit = (decision: LineageDecision | null): LineageCommit => ({
   sha: SWITCH_SHA,
   date: '2021-07-06',
@@ -968,11 +970,17 @@ interface LineageSample {
 }
 
 export const LINEAGES: Record<string, LineageSample> = {
-  // Real: the PR #5797 slice of the graph has one commit for it.
+  // Real: the PR #5797 slice of the graph has one commit for each of these.
   [E.apparentEncoding.id]: {
     as_of_years: [],
     decisions: [AE1],
     commits: [switchCommit(AE1)],
+    commit_total: 1,
+  },
+  [E.checkCompatibility.id]: {
+    as_of_years: [],
+    decisions: [],
+    commits: [switchCommit(null)],
     commit_total: 1,
   },
   [E.maxRetries.id]: {
@@ -1082,7 +1090,7 @@ export const EVALUATION: Evaluation = {
     { id: 'q01', question: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?', entity: E.apparentEncoding, expected: 'answered', results: notRun },
     { id: 'q02', question: 'Why is max_retries off by default?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q03', question: 'Why is verify=True the default?', entity: E.verify, expected: 'answered', results: notRun },
-    { id: 'q04', question: 'Why is HTTPAdapter.pool_maxsize 10 by default?', entity: E.poolMaxsize, expected: 'refused', results: notRun },
+    { id: 'q04', question: 'Why does check_compatibility cap the charset_normalizer version?', entity: E.checkCompatibility, expected: 'refused', results: notRun },
     { id: 'q05', question: 'What was the retry rule in 2013?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q06', question: 'Why does trust_env read proxy settings from the environment?', entity: E.trustEnv, expected: 'refused', results: notRun },
     { id: 'q07', question: 'Why is .netrc read when no auth is passed?', entity: E.netrc, expected: 'refused', results: notRun },

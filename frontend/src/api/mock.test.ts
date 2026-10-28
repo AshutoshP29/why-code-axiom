@@ -87,6 +87,30 @@ describe('mock API', () => {
     })
   })
 
+  it('refuses check_compatibility with only the commit that changed it', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.checkCompatibility.id, 'why the version cap?')
+    if (answer.verdict !== 'refused') throw new Error(`expected a refusal, got ${answer.verdict}`)
+    expect(answer.known_facts).toEqual([
+      expect.objectContaining({
+        title: "Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+        detail: 'changed it: +14 / -6 lines',
+        meta: ['2021-07-06', '@ashb'],
+      }),
+    ])
+    expect(answer.who_to_ask.map((p) => p.login)).toEqual(['ashb'])
+  })
+
+  it('links the shared commit to a decision only where the decision affects the item', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const affected = await api.getLineage(SAMPLE_REPO, E.apparentEncoding.id, null)
+    const changedOnly = await api.getLineage(SAMPLE_REPO, E.checkCompatibility.id, null)
+    expect(affected.decisions.map((d) => d.source.label)).toEqual(['PR #5797'])
+    expect(affected.commits[0]).toMatchObject({ sha: '3e798b94717918ea48a38cdc315bf47a1067cb39', decision_id: affected.decisions[0].id })
+    expect(changedOnly.decisions).toEqual([])
+    expect(changedOnly.commits[0]).toMatchObject({ sha: '3e798b94717918ea48a38cdc315bf47a1067cb39', decision_id: null })
+  })
+
   it('finds the sample class in an entity search', async () => {
     const api = createMockApi({ delayMs: 0 })
     const matches = await api.searchEntities(SAMPLE_REPO, 'Session')

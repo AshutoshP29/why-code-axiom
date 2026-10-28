@@ -89,6 +89,22 @@ test('Showcase → hedged answer → warning over a full answer → decision his
   await expect(page.getByRole('heading', { name: 'Decision history: timeout' })).toBeVisible()
 })
 
+test('Real sample: PR #5797 answer → the other item its commit changed → refusal with that fact', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Why does apparent_encoding use charset_normalizer?', exact: true }).click()
+  await expect(page.getByText('Active decision', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: /^PR #5797: Switch LGPL'd chardet/ })).toHaveAttribute(
+    'href',
+    'https://github.com/psf/requests/pull/5797',
+  )
+
+  await page.getByRole('button', { name: 'Ask about requests.check_compatibility' }).click()
+  await expect(page.getByText('No recorded decision', { exact: true })).toBeVisible()
+  expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.checkCompatibility)
+  await expect(page.getByText('changed it: +14 / -6 lines')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Ask @ashb', exact: true })).toBeVisible() // the last owner
+})
+
 test('Example chip → refusal → flag as missing context → gap queue → evaluation', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('link', { name: 'Why is pool_maxsize 10?', exact: true }).click()

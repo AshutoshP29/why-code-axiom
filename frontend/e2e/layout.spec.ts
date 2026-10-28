@@ -6,7 +6,7 @@ import { expect, ID, lineage, test, why } from './fixtures'
 const PAGES: { name: string; path: string; loaded: string }[] = [
   { name: 'home', path: '/', loaded: 'Hotspots' },
   { name: 'why-workspace', path: why(ID.rebuildAuth, 'strips the Authorization header on redirect?'), loaded: 'Chain of evidence' },
-  { name: 'refusal', path: why(ID.poolMaxsize, 'why is the default 10?'), loaded: 'What the graph does know' },
+  { name: 'refusal', path: why(ID.checkCompatibility, 'why the version cap?'), loaded: 'What the graph does know' },
   { name: 'hedged', path: why(ID.timeout, 'Why is there no default timeout?'), loaded: 'Chain of evidence' },
   { name: 'plain-question-matched', path: why(null, 'why does rebuild_auth strip the header?'), loaded: 'Chain of evidence' },
   { name: 'plain-question-no-match', path: why(null, 'why did requests drop python 2 support?'), loaded: 'What the graph does know' },

@@ -39,6 +39,8 @@ describe('entity names', () => {
 
   it('prefixes module-level functions with their module', () => {
     expect(entityLabel(E.netrc)).toBe('utils.get_netrc_auth')
+    // A package's __init__.py is the package itself.
+    expect(entityLabel(E.checkCompatibility)).toBe('requests.check_compatibility')
   })
 
   it('builds breadcrumbs like the designs', () => {

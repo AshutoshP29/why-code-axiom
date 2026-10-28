@@ -209,17 +209,19 @@ describe('Asking without an entity', () => {
 
 describe('Refusal', () => {
   it('refuses below the threshold and keeps facts apart from reasons', async () => {
-    renderApp(whyPath(E.poolMaxsize.id, 'why is the default 10?'))
+    renderApp(whyPath(E.checkCompatibility.id, 'why the version cap?'))
 
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
     expect(screen.getByText('Refuses below 40% · warns below 70%')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What the graph does know' })).toBeInTheDocument()
-    expect(screen.getByText('Introduced in commit e4f5a6b, 2012-05-02')).toBeInTheDocument()
-    expect(screen.getByText('31% match')).toBeInTheDocument()
-    expect(screen.getByText('Why only 18%?')).toBeInTheDocument()
+    // The one fact the graph has: the commit that changed it, with no reason attached.
+    expect(screen.getByText("Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer")).toBeInTheDocument()
+    expect(screen.getByText('changed it: +14 / -6 lines')).toBeInTheDocument()
+    expect(screen.getByText('36% match')).toBeInTheDocument()
+    expect(screen.getByText('Why only 12%?')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open commit history' })).toHaveAttribute(
       'href',
-      'https://github.com/psf/requests/commits/main/src/requests/adapters.py',
+      'https://github.com/psf/requests/commits/main/src/requests/__init__.py',
     )
     expect(screen.queryByText('Active decision')).not.toBeInTheDocument()
   })

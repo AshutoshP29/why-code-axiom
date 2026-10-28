@@ -3,6 +3,7 @@ import { expect, test as base, type Page } from '@playwright/test'
 // Ids from the sample data (src/api/sample.ts).
 export const ID = {
   apparentEncoding: 'psf/requests#fn:src/requests/models.py::Response.apparent_encoding', // real: PR #5797
+  checkCompatibility: 'psf/requests#fn:src/requests/__init__.py::check_compatibility', // real refusal
   rebuildAuth: 'psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.rebuild_auth',
   resolveRedirects: 'psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.resolve_redirects',
   maxRetries: 'psf/requests#cfg:max_retries',

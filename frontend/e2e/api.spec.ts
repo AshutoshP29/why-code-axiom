@@ -150,6 +150,6 @@ test('Flagging a gap sends the item and the question', async ({ page }) => {
     method: 'POST',
     path: '/gaps',
     params: {},
-    body: { repo: 'psf/requests', entity_id: ID.poolMaxsize, question: 'Why is HTTPAdapter.pool_maxsize 10 by default?' },
+    body: { repo: 'psf/requests', entity_id: ID.poolMaxsize, question: 'why is the default 10?' },
   })
 })
