@@ -22,7 +22,7 @@ jobs:
         with:
           fetch-depth: 0 # full history: the commit-message check reads every commit
 
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v10.3.3 # an exact version: since v8 there are no @v10-style tags
         with:
           enable-cache: true
 
