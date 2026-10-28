@@ -80,7 +80,7 @@ def main() -> int:
     from whycode.graph.build import build_pr_graph
     from whycode.graph.client import aura_target, local_test_target
     from whycode.graph.queries import current_decisions, neo4j_runner
-    from whycode.graph.writer import repo_counts, write_batch
+    from whycode.graph.writer import repo_counts, set_repo_state, write_batch
     from whycode.ingest.fetch_pr import fetch_pr
     from whycode.ingest.github import GitHubClient
     from whycode.ingest.store import RawStore
@@ -136,6 +136,9 @@ def main() -> int:
         )
         with target.driver() as driver:
             stats = write_batch(driver, target.database, batch)
+            set_repo_state(
+                driver, target.database, thread.repo, status="READY", stage="extract", partial=True
+            )
             print(
                 f"      {stats.nodes} nodes and {stats.relationships} relationships merged; "
                 f"{stats.decisions_replaced} old decisions replaced"

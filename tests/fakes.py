@@ -31,6 +31,8 @@ class FakeGitHub:
         if path not in self.routes:
             return httpx.Response(404, json={"message": "Not Found"})
         body = self.routes[path]
+        if callable(body):  # a route can compute its answer, e.g. a search endpoint
+            return body(request)
         if isinstance(body, list):
             per_page = int(request.url.params.get("per_page", 30))
             page = int(request.url.params.get("page", 1))
