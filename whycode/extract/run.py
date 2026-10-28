@@ -66,6 +66,7 @@ def main() -> int:
     from whycode.code.affects import resolve_affects
     from whycode.code.index import build_pr_code_index
     from whycode.config import ConfigError, get_settings
+    from whycode.extract.prompt import render_code_outline
     from whycode.extract.sources import load_thread
     from whycode.ingest.store import RawStore
     from whycode.llm.cache import PgLLMCache
@@ -97,13 +98,20 @@ def main() -> int:
         print(
             f"sources: {len(thread.sources)} ({sum(len(x.text) for x in thread.sources):,} chars)"
         )
-        result = extract_thread(thread, llm, max_chars=args.max_chars, dry_run=args.dry_run)
+        try:
+            index = build_pr_code_index(store, args.repo, args.pr)
+        except LookupError:
+            index = None
+        outline = render_code_outline(index) if index and index.parsed else None
+        if outline is None:
+            print("note: no parsed code for this PR; the prompt has no code outline")
+        result = extract_thread(
+            thread, llm, max_chars=args.max_chars, dry_run=args.dry_run, code_outline=outline
+        )
         checks = None
         if not args.dry_run and result.decisions:
-            try:
-                index = build_pr_code_index(store, args.repo, args.pr)
-            except LookupError as exc:
-                print(f"affects not checked: {exc}")
+            if index is None:
+                print("affects not checked: the PR's code is not indexed; run fetch_pr")
             else:
                 if index.missing_code:
                     print(f"note: code not fetched for {index.missing_code}; run fetch_pr again")
