@@ -191,7 +191,18 @@ class LLMClient:
                 failures.append("every provider is switched off for this run (unavailable)")
                 break
             attempted = 0
+            last_round = round_no == self.max_rounds - 1
             for p in live:
+                if (
+                    not _is_hosted(p)
+                    and not last_round
+                    and reasons
+                    and set(reasons) <= TRANSIENT
+                    and self._hosted_usable()
+                ):
+                    # The hosted providers only failed for a passing reason (rate limit,
+                    # overload): wait for them instead of settling for the weaker local model.
+                    continue
                 if local_hit and p is local_hit[0]:
                     # Hosted providers failed: the local answer we already have is the fallback.
                     self.cache_hits += 1
