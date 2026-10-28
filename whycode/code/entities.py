@@ -110,8 +110,32 @@ def _end_line(node: Node) -> int:
     return row if col == 0 and row > node.start_point[0] else row + 1
 
 
+def _comment_ranges(node: Node) -> list[tuple[int, int]]:
+    """Byte ranges of every comment inside node."""
+    out, stack = [], [node]
+    while stack:
+        n = stack.pop()
+        if n.type == "comment":
+            out.append((n.start_byte, n.end_byte))
+        else:
+            stack.extend(n.children)
+    return sorted(out)
+
+
 def _value_text(node: Node) -> str:
-    return " ".join(_text(node).split())[:_MAX_VALUE_CHARS]
+    """The value's source text without comments, whitespace collapsed and clipped.
+
+    Comments are dropped so that editing a comment inside a multi-line value is not mistaken for
+    the value changing (Phase 2 compares values across commits).
+    """
+    raw = node.text or b""
+    parts, pos = [], node.start_byte
+    for start, end in _comment_ranges(node):
+        parts.append(raw[pos - node.start_byte : start - node.start_byte])
+        pos = end
+    parts.append(raw[pos - node.start_byte :])
+    text = b"".join(parts).decode("utf-8", errors="replace")
+    return " ".join(text.split())[:_MAX_VALUE_CHARS]
 
 
 def _references_constant(value: Node) -> bool:
