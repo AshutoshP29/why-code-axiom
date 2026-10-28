@@ -59,6 +59,26 @@ changed Python files are parsed with tree-sitter (`whycode/code/`), and a file, 
 config key is kept only if it really exists there. Paths are mapped to where the files live today
 (`requests/compat.py` -> `src/requests/compat.py`). Dropped items are printed with a reason.
 
+## Local model (optional)
+
+A model served by [Ollama](https://ollama.com) on this machine can extract too. It costs no API
+calls and has no rate limits, so it is the fallback when Gemini and Groq are down, and it can go
+first for bulk ingestion:
+
+```sh
+ollama pull qwen2.5:7b-instruct                  # about 4.7 GB
+# in .env: LOCAL_LLM_MODEL=qwen2.5:7b-instruct   and optionally LLM_PROVIDERS=local,gemini,groq
+uv run python -m whycode.extract.run --repo psf/requests --pr 5797 --providers local
+```
+
+Local calls do not count against `LLM_MAX_CALLS`. When that budget is spent, the hosted APIs are
+skipped and the local model still answers.
+
+On an RTX 40-series laptop GPU, Ollama's CUDA 13 backend can crash while loading
+(`exit status 0xc0000409`, "CUDA error: shared object initialization failed" in Ollama's
+server.log). Setting the environment variable `OLLAMA_LLM_LIBRARY=cuda_v12` before Ollama starts
+makes it use its CUDA 12 backend, which works.
+
 ## Tests
 
 ```sh
