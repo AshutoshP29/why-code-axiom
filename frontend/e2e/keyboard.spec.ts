@@ -133,7 +133,7 @@ test('"View as of" moves with the arrow keys', async ({ page }) => {
 
 test('Graph nodes can be reached and used from the keyboard', async ({ page }) => {
   await page.goto(why(ID.rebuildAuth, 'q'))
-  await tabTo(page, page.getByRole('button', { name: 'Ask about Session.resolve_redirects' }), 80)
+  await tabTo(page, page.getByRole('button', { name: 'Ask about SessionRedirectMixin.resolve_redirects' }), 80)
   await page.keyboard.press('Enter')
   await expect(page.getByText('No recorded decision')).toBeVisible()
 })

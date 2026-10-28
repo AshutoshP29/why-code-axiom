@@ -32,7 +32,7 @@ describe('class entities', () => {
 
 describe('entity names', () => {
   it('shows methods and settings by qualified name', () => {
-    expect(entityLabel(E.rebuildAuth)).toBe('Session.rebuild_auth')
+    expect(entityLabel(E.rebuildAuth)).toBe('SessionRedirectMixin.rebuild_auth')
     expect(entityLabel(E.poolMaxsize)).toBe('HTTPAdapter.pool_maxsize')
     expect(entityLabel(E.maxRetries)).toBe('max_retries')
   })
@@ -42,7 +42,7 @@ describe('entity names', () => {
   })
 
   it('builds breadcrumbs like the designs', () => {
-    expect(entityCrumbs(E.rebuildAuth)).toEqual(['sessions.py', 'Session.rebuild_auth()'])
+    expect(entityCrumbs(E.rebuildAuth)).toEqual(['sessions.py', 'SessionRedirectMixin.rebuild_auth()'])
     expect(entityCrumbs(E.maxRetries, true)).toEqual(['config key', 'adapters.py', 'max_retries'])
   })
 

@@ -13,7 +13,7 @@ describe('Why Workspace', () => {
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Why does Session.rebuild_auth strip the Authorization header on redirect?',
+        name: 'Why does rebuild_auth strip the Authorization header on redirect?',
       }),
     ).toBeInTheDocument()
     expect(screen.getByText('Active decision')).toBeInTheDocument()
@@ -64,7 +64,7 @@ describe('Why Workspace', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Ask @maintainer_a' })
     const message = within(dialog).getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })
-    expect(message.value).toContain("I'm looking at Session.rebuild_auth in psf/requests")
+    expect(message.value).toContain("I'm looking at SessionRedirectMixin.rebuild_auth in psf/requests")
     expect(message.value).toContain('Strip the Authorization header when a redirect changes host')
     await user.click(within(dialog).getByRole('button', { name: 'Copy message' }))
     expect(within(dialog).getByRole('button', { name: 'Copied' })).toBeInTheDocument()
@@ -76,9 +76,9 @@ describe('Why Workspace', () => {
   it('re-asks about a neighbouring entity from the graph', async () => {
     const user = userEvent.setup()
     renderApp(whyPath(E.rebuildAuth.id, 'q'))
-    await user.click(await screen.findByRole('button', { name: 'Ask about Session.resolve_redirects' }))
+    await user.click(await screen.findByRole('button', { name: 'Ask about SessionRedirectMixin.resolve_redirects' }))
 
-    expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is Session.resolve_redirects like this?`)
+    expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is SessionRedirectMixin.resolve_redirects like this?`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
   })
 })
@@ -144,8 +144,8 @@ describe('Asking without an entity', () => {
   it('says which item the question was matched to', async () => {
     renderApp(whyPath(null, asked))
     expect(await screen.findByText('Active decision')).toBeInTheDocument()
-    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to Session.rebuild_auth (score 0.90) from your question.')
-    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Session.rebuild_auth()')
+    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to SessionRedirectMixin.rebuild_auth (score 0.90) from your question.')
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('SessionRedirectMixin.rebuild_auth()')
   })
 
   it('asks the same question about a different entity when the match is wrong', async () => {
@@ -153,7 +153,7 @@ describe('Asking without an entity', () => {
     renderApp(whyPath(null, asked))
     await user.click(await screen.findByRole('button', { name: 'Pick a different entity' }))
     await user.type(screen.getByRole('combobox'), 'resolve')
-    await user.click(await screen.findByRole('option', { name: /Session\.resolve_redirects/ }))
+    await user.click(await screen.findByRole('option', { name: /SessionRedirectMixin\.resolve_redirects/ }))
 
     expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=${asked}`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()

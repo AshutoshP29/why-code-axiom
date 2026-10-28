@@ -2,8 +2,8 @@ import { expect, test as base, type Page } from '@playwright/test'
 
 // Ids from the sample data (src/api/sample.ts).
 export const ID = {
-  rebuildAuth: 'psf/requests#fn:src/requests/sessions.py::Session.rebuild_auth',
-  resolveRedirects: 'psf/requests#fn:src/requests/sessions.py::Session.resolve_redirects',
+  rebuildAuth: 'psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.rebuild_auth',
+  resolveRedirects: 'psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.resolve_redirects',
   maxRetries: 'psf/requests#cfg:max_retries',
   poolMaxsize: 'psf/requests#cfg:pool_maxsize',
   timeout: 'psf/requests#cfg:timeout', // the hedged sample

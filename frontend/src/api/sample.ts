@@ -84,6 +84,7 @@ const AUTH = 'src/requests/auth.py'
 const MODELS = 'src/requests/models.py'
 const UTILS = 'src/requests/utils.py'
 
+// Function and class names are the ones in psf/requests, as whycode/code/entities.py parses them.
 export const E = {
   sessions: file(SESSIONS),
   adapters: file(ADAPTERS),
@@ -91,8 +92,9 @@ export const E = {
   models: file(MODELS),
   utils: file(UTILS),
   sessionClass: cls(SESSIONS, 'Session'),
-  rebuildAuth: fn(SESSIONS, 'Session.rebuild_auth'),
-  resolveRedirects: fn(SESSIONS, 'Session.resolve_redirects'),
+  // The redirect methods live on the mixin that Session inherits from, not on Session itself.
+  rebuildAuth: fn(SESSIONS, 'SessionRedirectMixin.rebuild_auth'),
+  resolveRedirects: fn(SESSIONS, 'SessionRedirectMixin.resolve_redirects'),
   mergeEnv: fn(SESSIONS, 'Session.merge_environment_settings'),
   trustEnv: cfg(SESSIONS, 'trust_env', 'Session.trust_env'),
   verify: cfg(SESSIONS, 'verify'),
@@ -103,7 +105,7 @@ export const E = {
   timeout: cfg(ADAPTERS, 'timeout'),
   basicAuth: fn(AUTH, 'HTTPBasicAuth.__call__'),
   digestHeader: fn(AUTH, 'HTTPDigestAuth.build_digest_header'),
-  encoding: fn(MODELS, 'Response.encoding'),
+  text: fn(MODELS, 'Response.text'),
   iterContent: fn(MODELS, 'Response.iter_content'),
   json: fn(MODELS, 'Response.json'),
   netrc: fn(UTILS, 'get_netrc_auth'),
@@ -130,7 +132,7 @@ export const EXPLORER: Explorer = {
       item(E.mergeEnv, 2),
       item(E.trustEnv, 1),
     ]),
-    item(E.models, 4, false, [item(E.encoding, 2), item(E.iterContent, 1), item(E.json, 1)]),
+    item(E.models, 4, false, [item(E.text, 2), item(E.iterContent, 1), item(E.json, 1)]),
     item(E.utils, 2, false, [item(E.netrc, 1), item(E.bypassProxies, 1)]),
   ],
   config_keys: [
@@ -249,7 +251,7 @@ export const OVERVIEW: Overview = {
     { entity: E.rebuildAuth, reversals: 3 },
     { entity: E.verify, reversals: 3 },
     { entity: E.allowRedirects, reversals: 2 },
-    { entity: E.encoding, reversals: 2 },
+    { entity: E.text, reversals: 2 },
   ],
   example_questions: [
     { entity: E.maxRetries, question: 'Why is max_retries off by default?' },
@@ -422,7 +424,7 @@ const edge = (from: string, to: string, label: string): GraphEdge => ({ from, to
 
 const REBUILD_AUTH: AnsweredAnswer = {
   verdict: 'answered',
-  question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?',
+  question: 'Why does rebuild_auth strip the Authorization header on redirect?',
   entity: E.rebuildAuth,
   matched_by: 'selected',
   match_score: null,
@@ -458,7 +460,7 @@ const REBUILD_AUTH: AnsweredAnswer = {
     },
     {
       kind: 'code',
-      title: 'sessions.py › Session.rebuild_auth()',
+      title: 'sessions.py › SessionRedirectMixin.rebuild_auth()',
       excerpt: 'Function changed by the commit above. Later edits (2019, 2023) did not alter the rule.',
       meta: ['last touched 2023-06'],
       source: code(SESSIONS, 'def rebuild_auth'),
@@ -477,8 +479,8 @@ const REBUILD_AUTH: AnsweredAnswer = {
   graph: {
     nodes: [
       node(RA2.id, 'decision', 'Strip auth on host change', { center: true, url: RA2.source.url }),
-      node(E.rebuildAuth.id, 'entity', 'Session.rebuild_auth', { entity_id: E.rebuildAuth.id }),
-      node(E.resolveRedirects.id, 'entity', 'Session.resolve_redirects', {
+      node(E.rebuildAuth.id, 'entity', 'SessionRedirectMixin.rebuild_auth', { entity_id: E.rebuildAuth.id }),
+      node(E.resolveRedirects.id, 'entity', 'SessionRedirectMixin.resolve_redirects', {
         entity_id: E.resolveRedirects.id,
       }),
       node('pr-1565', 'pull_request', 'PR #1565', { url: pr(1565, 'rebuild_auth').url }),
@@ -929,7 +931,7 @@ const notRun = { llm_only: null, vector_rag: null, whycode: null }
 export const EVALUATION: Evaluation = {
   ...HEALTH.evaluation,
   questions: [
-    { id: 'q01', question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?', entity: E.rebuildAuth, expected: 'answered', results: notRun },
+    { id: 'q01', question: 'Why does rebuild_auth strip the Authorization header on redirect?', entity: E.rebuildAuth, expected: 'answered', results: notRun },
     { id: 'q02', question: 'Why is max_retries off by default?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q03', question: 'Why is verify=True the default?', entity: E.verify, expected: 'answered', results: notRun },
     { id: 'q04', question: 'Why is HTTPAdapter.pool_maxsize 10 by default?', entity: E.poolMaxsize, expected: 'refused', results: notRun },

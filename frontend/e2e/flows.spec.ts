@@ -11,12 +11,12 @@ test('Home → pick an entity → ask → Why Workspace with linked evidence', a
 
   await ask.getByRole('button', { name: 'Pick an entity' }).click()
   await page.getByRole('combobox', { name: /Search functions/ }).fill('rebuild')
-  await page.getByRole('option', { name: /Session\.rebuild_auth/ }).click()
+  await page.getByRole('option', { name: /SessionRedirectMixin\.rebuild_auth/ }).click()
   await ask.getByRole('textbox', { name: 'Your question' }).fill('why strip the header?')
   await ask.getByRole('button', { name: 'Trace' }).click()
 
   await expect(page.getByRole('heading', { level: 1 })).toHaveText(
-    'Why does Session.rebuild_auth strip the Authorization header on redirect?',
+    'Why does rebuild_auth strip the Authorization header on redirect?',
   )
   expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.rebuildAuth)
   await expect(page.getByText('Active decision', { exact: true })).toBeVisible()
@@ -38,13 +38,13 @@ test('Home → plain question, nothing picked → matched answer → pick a diff
   await ask.getByRole('button', { name: 'Trace' }).click()
 
   const match = page.getByText(/^Matched to/)
-  await expect(match).toHaveText('Matched to Session.rebuild_auth (score 0.90) from your question.')
+  await expect(match).toHaveText('Matched to SessionRedirectMixin.rebuild_auth (score 0.90) from your question.')
   expect(new URL(page.url()).searchParams.has('entity')).toBe(false)
   await expect(page.getByText('Active decision', { exact: true })).toBeVisible()
 
   await page.getByRole('button', { name: 'Pick a different entity' }).click()
   await page.getByRole('combobox').fill('resolve')
-  await page.getByRole('option', { name: /Session\.resolve_redirects/ }).click()
+  await page.getByRole('option', { name: /SessionRedirectMixin\.resolve_redirects/ }).click()
   await expect(page.getByText('No recorded decision')).toBeVisible()
   expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.resolveRedirects)
   await expect(match).toHaveCount(0)
@@ -133,7 +133,7 @@ test('Hotspot → lineage → time travel → decision → workspace, and Back r
 
 test('Graph node → re-ask about the neighbouring entity', async ({ page }) => {
   await page.goto(why(ID.rebuildAuth, 'q'))
-  await page.getByRole('button', { name: 'Ask about Session.resolve_redirects' }).click()
+  await page.getByRole('button', { name: 'Ask about SessionRedirectMixin.resolve_redirects' }).click()
   await expect(page.getByText('No recorded decision')).toBeVisible()
   expect(new URL(page.url()).searchParams.get('entity')).toBe(ID.resolveRedirects)
 })
@@ -147,7 +147,7 @@ test('Who to ask → message for the maintainer is copied', async ({ page, conte
   await dialog.getByRole('button', { name: 'Copy message' }).click()
   await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible()
   const copied = await page.evaluate(() => navigator.clipboard.readText())
-  expect(copied).toContain("I'm looking at Session.rebuild_auth in psf/requests")
+  expect(copied).toContain("I'm looking at SessionRedirectMixin.rebuild_auth in psf/requests")
   await page.keyboard.press('Escape')
   await expect(dialog).toBeHidden()
 })
