@@ -56,7 +56,7 @@ test('Home → plain question, nothing picked → matched answer → pick a diff
 test('Plain question that matches nothing → refusal with no item → pick one and ask again', async ({ page }) => {
   await page.goto('/')
   const question = page.getByRole('search', { name: 'Ask why' }).getByRole('textbox', { name: 'Your question' })
-  await question.fill('why did requests drop chardet?')
+  await question.fill('why did requests drop python 2 support?')
   await question.press('Enter')
 
   await expect(page.getByText('No matching item')).toBeVisible()

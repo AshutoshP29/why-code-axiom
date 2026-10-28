@@ -36,7 +36,7 @@ describe('mock API', () => {
 
   it('refuses with no entity when nothing matches the question', async () => {
     const api = createMockApi({ delayMs: 0 })
-    const answer = await api.ask(SAMPLE_REPO, null, 'why did requests drop chardet?')
+    const answer = await api.ask(SAMPLE_REPO, null, 'why did requests drop python 2 support?')
     expect(answer).toMatchObject({ verdict: 'refused', entity: null, matched_by: 'search', match_score: null })
     if (answer.verdict !== 'refused') throw new Error('expected a refusal')
     // Evidence that shares a word ("drop") is offered as related only, with a low score.
@@ -62,6 +62,28 @@ describe('mock API', () => {
       entity: { id: E.timeout.id },
       matched_by: 'search',
       match_score: 0.75,
+    })
+  })
+
+  it('answers apparent_encoding with the real decision from PR #5797', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.apparentEncoding.id, 'why?')
+    if (answer.verdict !== 'answered') throw new Error(`expected an answer, got ${answer.verdict}`)
+    expect(answer.decision).toMatchObject({
+      summary: 'Replace chardet (LGPL) with charset_normalizer (MIT)',
+      decided_at: '2021-07-06',
+      proposed_by: 'ashb',
+      source: { id: 'psf/requests#pr:5797', url: 'https://github.com/psf/requests/pull/5797' },
+    })
+    expect(answer.evidence_chain.map((s) => s.source.id)).toContain(
+      'psf/requests#commit:3e798b94717918ea48a38cdc315bf47a1067cb39',
+    )
+
+    // Asked from Home with nothing picked, it is found by name.
+    expect(await api.ask(SAMPLE_REPO, null, 'why does apparent_encoding use charset_normalizer?')).toMatchObject({
+      verdict: 'answered',
+      entity: { id: E.apparentEncoding.id },
+      matched_by: 'search',
     })
   })
 

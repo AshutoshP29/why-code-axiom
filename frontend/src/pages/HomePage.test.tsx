@@ -14,6 +14,7 @@ describe('Home', () => {
       expect(within(summary).getByText(value)).toBeInTheDocument()
     }
     expect(screen.getByRole('link', { name: /max_retries\s*4 reversals/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Why does apparent_encoding use charset_normalizer?' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Why is pool_maxsize 10?' })).toBeInTheDocument()
     expect(screen.getByText('Sample data')).toBeInTheDocument()
   })

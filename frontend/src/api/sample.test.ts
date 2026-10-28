@@ -88,6 +88,7 @@ describe('sample ids', () => {
   })
 
   it('use the real items exactly as the graph has them', () => {
+    expect(E.apparentEncoding.id).toBe('psf/requests#fn:src/requests/models.py::Response.apparent_encoding')
     expect(E.rebuildAuth.id).toBe('psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.rebuild_auth')
   })
 })

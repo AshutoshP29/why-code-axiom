@@ -1,7 +1,9 @@
 // Sample data that mirrors the Figma designs, so the screens work before the API exists.
-// Every person, number and decision here is made up. Links open real GitHub searches in
-// psf/requests rather than invented PR pages. Every id is built the way whycode/ids.py builds it.
-// The UI shows "Sample data" while this is in use.
+// One item is real, as the graph holds it: the answer for Response.apparent_encoding (PR #5797
+// replaced chardet with charset_normalizer). Its people, dates, quotes and links are real.
+// Everything else (the maintainer_* people, other PRs, issues and commits) is made up, and its links
+// open GitHub searches rather than invented pages. Scores and counts are made up throughout.
+// Every id is built the way whycode/ids.py builds it. The UI shows "Sample data" while this is in use.
 
 import type {
   Answer,
@@ -81,6 +83,16 @@ const code = (path: string, term: string): SourceRef => ({
   url: search(term, 'code'),
 })
 
+// The real items link to their own pages on GitHub.
+const PR_5797 = 5797
+const SWITCH_SHA = '3e798b94717918ea48a38cdc315bf47a1067cb39' // the PR's only commit
+const realPr = (n: number): SourceRef => ({ id: id('pr', String(n)), label: `PR #${n}`, url: `${GH}/pull/${n}` })
+const realCommit = (sha: string): SourceRef => ({
+  id: id('commit', sha),
+  label: `Commit ${sha.slice(0, 7)}`,
+  url: `${GH}/commit/${sha}`,
+})
+
 // ---------- entities ----------
 
 function file(path: string): Entity {
@@ -129,6 +141,7 @@ export const E = {
   timeout: cfg(ADAPTERS, 'timeout'),
   basicAuth: fn(AUTH, 'HTTPBasicAuth.__call__'),
   digestHeader: fn(AUTH, 'HTTPDigestAuth.build_digest_header'),
+  apparentEncoding: fn(MODELS, 'Response.apparent_encoding'),
   text: fn(MODELS, 'Response.text'),
   iterContent: fn(MODELS, 'Response.iter_content'),
   json: fn(MODELS, 'Response.json'),
@@ -156,7 +169,7 @@ export const EXPLORER: Explorer = {
       item(E.mergeEnv, 2),
       item(E.trustEnv, 1),
     ]),
-    item(E.models, 4, false, [item(E.text, 2), item(E.iterContent, 1), item(E.json, 1)]),
+    item(E.models, 5, false, [item(E.apparentEncoding, 1), item(E.text, 2), item(E.iterContent, 1), item(E.json, 1)]),
     item(E.utils, 2, false, [item(E.netrc, 1), item(E.bypassProxies, 1)]),
   ],
   config_keys: [
@@ -278,17 +291,17 @@ export const OVERVIEW: Overview = {
     { entity: E.text, reversals: 2 },
   ],
   example_questions: [
+    { entity: E.apparentEncoding, question: 'Why does apparent_encoding use charset_normalizer?' },
     { entity: E.maxRetries, question: 'Why is max_retries off by default?' },
     { entity: E.rebuildAuth, question: 'Why does rebuild_auth strip headers?' },
-    { entity: E.verify, question: 'Why is verify=True the default?' },
     { entity: E.poolMaxsize, question: 'Why is pool_maxsize 10?' },
   ],
   showcase: [
     {
       outcome: 'answered',
-      entity: E.rebuildAuth,
-      question: 'Why does rebuild_auth strip the header?',
-      summary: 'Decision, discussion, commit and the person to ask.',
+      entity: E.apparentEncoding,
+      question: 'Why does apparent_encoding use charset_normalizer?',
+      summary: 'Decision, discussion, commit and the people to ask.',
     },
     {
       outcome: 'superseded',
@@ -425,6 +438,18 @@ const T1 = decision('3e429f501fd9e9ec', {
   source: commit('d7a3f10', 'timeout'),
 })
 
+// Real: the decision recorded from PR #5797, decided (merged) on 2021-07-06.
+const AE1 = decision('e15ff91b2e4f9b4d', {
+  summary: 'Replace chardet (LGPL) with charset_normalizer (MIT)',
+  rationale:
+    'With an LGPL dependency it was unclear whether projects that bundle requests into one binary must be LGPL too, and the Apache Software Foundation cannot depend on LGPL code. charset_normalizer is MIT licensed; chardet is still used first if it is installed.',
+  decided_at: '2021-07-06',
+  status: 'ACTIVE',
+  proposed_by: 'ashb',
+  reviewed_by: 'sigmavirus24',
+  source: realPr(PR_5797),
+})
+
 const withoutEdges = ({ supersedes: _ignored, ...d }: LineageDecision): Decision => d
 
 // ---------- answers ----------
@@ -449,6 +474,84 @@ const node = (
 })
 
 const edge = (from: string, to: string, label: string): GraphEdge => ({ from, to, label })
+
+// Real, apart from the scores: the graph's answer for Response.apparent_encoding.
+const APPARENT_ENCODING: AnsweredAnswer = {
+  verdict: 'answered',
+  question: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?',
+  entity: E.apparentEncoding,
+  matched_by: 'selected',
+  match_score: null,
+  confidence: 0.88,
+  thresholds: THRESHOLDS,
+  partial_history: false,
+  answer_text:
+    'Because chardet is LGPL licensed. Projects that bundle requests into a single binary could not tell whether the result had to be LGPL too, and the Apache Software Foundation does not allow a required LGPL dependency. charset_normalizer is MIT licensed, so requests switched to it in 2021, and still uses chardet first when it is installed.',
+  decision: withoutEdges(AE1),
+  superseded: [],
+  evidence_chain: [
+    {
+      kind: 'discussion',
+      title: "PR #5797: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      excerpt:
+        '"By changing out this dependency for one under MIT we remove all license ambiguity." chardet stays as an escape hatch: it is used first if it is installed.',
+      meta: ['2021-04-22 to 07-06', '105 comments', 'opened by @ashb'],
+      source: { id: id('ev', `pr:${PR_5797}:body`), label: `PR #${PR_5797}`, url: `${GH}/pull/${PR_5797}` },
+    },
+    {
+      kind: 'discussion',
+      title: 'Review: how close charset_normalizer must stay to chardet',
+      excerpt:
+        '"The main thing we need is reasonable confidence this is mostly backwards compatible." The maintainer asked for roughly 75% agreement with chardet before switching.',
+      meta: ['2021-05-11', '@sigmavirus24'],
+      source: {
+        id: id('ev', `pr:${PR_5797}:ic:838320835`),
+        label: `PR #${PR_5797} comment`,
+        url: `${GH}/pull/${PR_5797}#issuecomment-838320835`,
+      },
+    },
+    {
+      kind: 'commit',
+      title: "3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      excerpt: 'The only commit in the PR. Its message gives the same licence reason and keeps chardet in use when it is installed.',
+      meta: ['2021-07-06', '@ashb', '10 files'],
+      source: realCommit(SWITCH_SHA),
+    },
+    {
+      kind: 'code',
+      title: 'models.py › Response.apparent_encoding()',
+      excerpt:
+        'Changed by the commit above (+1 / -1). It calls chardet.detect(), and compat.py binds that name to chardet if it is installed, otherwise to charset_normalizer.',
+      meta: [MODELS],
+      source: { id: E.apparentEncoding.id, label: MODELS, url: `${GH}/blob/main/${MODELS}` },
+    },
+  ],
+  who_to_ask: [
+    person('ashb', 'Proposed the decision', false, '2021-07-06'),
+    person('nateprewitt', 'Approved it', true, '2026-08-25'),
+    person('sigmavirus24', 'Approved and merged it', true, '2026-05-31'),
+  ],
+  confidence_factors: [
+    { label: 'Entity match', value: 0.96, display: '96%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.92, display: '92%', tone: 'good' },
+    { label: 'Independent sources', value: 1, display: '3 of 3', tone: 'good' },
+    { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
+  ],
+  graph: {
+    nodes: [
+      node(AE1.id, 'decision', 'Replace chardet', { center: true, url: AE1.source.url }),
+      node(E.apparentEncoding.id, 'entity', 'Response.apparent_encoding', { entity_id: E.apparentEncoding.id }),
+      node(id('pr', String(PR_5797)), 'pull_request', `PR #${PR_5797}`, { url: realPr(PR_5797).url }),
+      node(id('commit', SWITCH_SHA), 'commit', SWITCH_SHA.slice(0, 7), { url: realCommit(SWITCH_SHA).url }),
+    ],
+    edges: [
+      edge(AE1.id, E.apparentEncoding.id, 'AFFECTS'),
+      edge(AE1.id, id('pr', String(PR_5797)), 'DECIDED_IN'),
+      edge(id('pr', String(PR_5797)), id('commit', SWITCH_SHA), 'CONTAINS'),
+      edge(id('commit', SWITCH_SHA), E.apparentEncoding.id, 'MODIFIES'),
+    ],
+  },
+}
 
 const REBUILD_AUTH: AnsweredAnswer = {
   verdict: 'answered',
@@ -773,6 +876,7 @@ const POOL_MAXSIZE: RefusedAnswer = {
 }
 
 export const ANSWERS: Record<string, Answer> = {
+  [E.apparentEncoding.id]: APPARENT_ENCODING,
   [E.rebuildAuth.id]: REBUILD_AUTH,
   [E.maxRetries.id]: MAX_RETRIES,
   [E.verify.id]: VERIFY,
@@ -847,6 +951,15 @@ const lineageCommit = (
   decision_id: decision?.id ?? null,
 })
 
+// PR #5797's only commit, the one the graph has for Response.apparent_encoding.
+const switchCommit = (decision: LineageDecision | null): LineageCommit => ({
+  sha: SWITCH_SHA,
+  date: '2021-07-06',
+  message: "Switch LGPL'd chardet for MIT licensed charset_normalizer",
+  url: realCommit(SWITCH_SHA).url,
+  decision_id: decision?.id ?? null,
+})
+
 interface LineageSample {
   as_of_years: number[]
   decisions: LineageDecision[]
@@ -855,6 +968,13 @@ interface LineageSample {
 }
 
 export const LINEAGES: Record<string, LineageSample> = {
+  // Real: the PR #5797 slice of the graph has one commit for it.
+  [E.apparentEncoding.id]: {
+    as_of_years: [],
+    decisions: [AE1],
+    commits: [switchCommit(AE1)],
+    commit_total: 1,
+  },
   [E.maxRetries.id]: {
     as_of_years: [2013, 2016],
     decisions: [MR1, MR2, MR3],
@@ -959,7 +1079,7 @@ const notRun = { llm_only: null, vector_rag: null, whycode: null }
 export const EVALUATION: Evaluation = {
   ...HEALTH.evaluation,
   questions: [
-    { id: 'q01', question: 'Why does rebuild_auth strip the Authorization header on redirect?', entity: E.rebuildAuth, expected: 'answered', results: notRun },
+    { id: 'q01', question: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?', entity: E.apparentEncoding, expected: 'answered', results: notRun },
     { id: 'q02', question: 'Why is max_retries off by default?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q03', question: 'Why is verify=True the default?', entity: E.verify, expected: 'answered', results: notRun },
     { id: 'q04', question: 'Why is HTTPAdapter.pool_maxsize 10 by default?', entity: E.poolMaxsize, expected: 'refused', results: notRun },
