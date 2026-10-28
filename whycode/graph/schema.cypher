@@ -1,4 +1,4 @@
-// WhyCode graph schema for Neo4j AuraDB, MULTI-REPOSITORY version (v3)
+// WhyCode graph schema for Neo4j AuraDB, MULTI-REPOSITORY version (v4: adds Class)
 // This file is the source of truth. Apply it with `python scripts/apply_schema.py` (safe to re-run).
 // Embedding size 384 assumes a local bge-small / MiniLM model; change if you use another.
 //
@@ -24,6 +24,7 @@ CREATE CONSTRAINT file_id     IF NOT EXISTS FOR (n:File)        REQUIRE n.id IS 
 CREATE CONSTRAINT function_id IF NOT EXISTS FOR (n:Function)    REQUIRE n.id IS UNIQUE;   // id = "<repo>#fn:<path>::<qualified name>"
 CREATE CONSTRAINT module_id   IF NOT EXISTS FOR (n:Module)      REQUIRE n.id IS UNIQUE;   // id = "<repo>#mod:requests.sessions"
 CREATE CONSTRAINT config_id   IF NOT EXISTS FOR (n:ConfigKey)   REQUIRE n.id IS UNIQUE;   // id = "<repo>#cfg:max_retries"
+CREATE CONSTRAINT class_id    IF NOT EXISTS FOR (n:Class)       REQUIRE n.id IS UNIQUE;   // id = "<repo>#cls:<path>::<qualified name>"
 
 // ---------- 2. Search indexes ----------
 // Vector index: only used to find the ENTRY POINT into the graph, never to answer on its own.
@@ -34,8 +35,12 @@ OPTIONS {indexConfig: {`vector.dimensions`: 384, `vector.similarity_function`: '
 
 // Fulltext index for resolving "rebuild_auth" or "max_retries" in a question to code entities.
 // Also covers all repos: add `WHERE node.repo = $repo` to every lookup.
-CREATE FULLTEXT INDEX entity_names IF NOT EXISTS
-FOR (n:File|Function|Module|ConfigKey) ON EACH [n.name, n.qualified_name, n.aliases_text];
+// v4 renamed it from entity_names to add Class: CREATE ... IF NOT EXISTS never changes an index
+// that already exists, so the old one is dropped and the new one created under a new name.
+// Both statements are no-ops on every later run.
+DROP INDEX entity_names IF EXISTS;
+CREATE FULLTEXT INDEX entity_search IF NOT EXISTS
+FOR (n:File|Class|Function|Module|ConfigKey) ON EACH [n.name, n.qualified_name, n.aliases_text];
 
 // Per-repo lookups (keep every screen fast when many repos are loaded)
 CREATE INDEX decision_repo_status IF NOT EXISTS FOR (d:Decision)    ON (d.repo, d.status);
@@ -76,21 +81,26 @@ CREATE INDEX person_repo          IF NOT EXISTS FOR (p:Person)      ON (p.repo);
 // Person      {id, repo, login, name, first_seen, last_seen, active}     // active = last_seen within ~18 months, in THIS repo
 // File        {id, repo, path, name, aliases, aliases_text}
 //   aliases      = list of earlier paths (requests/sessions.py -> src/requests/sessions.py)
-//   aliases_text = the aliases joined with single spaces; fulltext cannot index a list, so entity_names uses this
-// Function    {id, repo, name, qualified_name, file_path, aliases_text}
+//   aliases_text = the aliases joined with single spaces; fulltext cannot index a list, so entity_search uses this
+// Class       {id, repo, name, qualified_name, path, start_line, end_line, aliases_text}
+// Function    {id, repo, name, qualified_name, path, start_line, end_line, aliases_text}
+//   qualified_name is dotted from the module down: "SessionRedirectMixin.rebuild_auth", "outer.inner"
 // Module      {id, repo, name}
-// ConfigKey   {id, repo, name, qualified_name, aliases_text}
+// ConfigKey   {id, repo, name, qualified_name, path, value, aliases_text}
+//   value = source text of the assigned value or default ("0", "DEFAULT_RETRIES"); a later
+//   commit that changes it is a supersession signal
 
 // ---------- 4. Relationships (both ends are always in the same repo) ----------
 // (:PullRequest)-[:CONTAINS]->(:Commit)
 // (:PullRequest)-[:CLOSES]->(:Issue)              // "fixes #N", API closing references
 // (:Commit)-[:REFERENCES]->(:Issue|:PullRequest)  // "#N" in the message, incl. "(#6767)" in subjects
-// (:Commit)-[:MODIFIES {added, removed}]->(:File|:Function|:ConfigKey)
+// (:Commit)-[:MODIFIES {added, removed}]->(:File|:Class|:Function|:ConfigKey)
 // (:Commit)-[:REVERTS]->(:Commit)                 // from "Revert ..." commits and git revert trailers
-// (:Module)-[:CONTAINS]->(:File)-[:CONTAINS]->(:Function)
+// (:Module)-[:CONTAINS]->(:File)-[:CONTAINS]->(:Class|:Function|:ConfigKey)
+// (:Class)-[:CONTAINS]->(:Function)                // methods; nested functions likewise
 // (:Person)-[:AUTHORED]->(:Commit|:PullRequest|:Issue|:Evidence)
 // (:Person)-[:REVIEWED]->(:PullRequest)
-// (:Decision)-[:AFFECTS]->(:File|:Function|:ConfigKey)
+// (:Decision)-[:AFFECTS]->(:File|:Class|:Function|:ConfigKey)
 // (:Decision)-[:DECIDED_IN]->(:PullRequest|:Issue|:Commit)
 // (:Decision)-[:SUPPORTED_BY {span_start, span_end}]->(:Evidence)   // a Decision with no SUPPORTED_BY is discarded
 // (:Decision)-[:TRIGGERED_BY]->(:Issue)           // incident or bug that caused the decision
@@ -104,7 +114,7 @@ CREATE INDEX person_repo          IF NOT EXISTS FOR (p:Person)      ON (p.repo);
 
 // 5a. The CURRENT governing decision(s) for an entity, never a dead one.
 //     "Head" = no later decision that reverses or replaces it.
-//     <Label> is File | Function | ConfigKey, inserted by code from that fixed allowlist (labels cannot
+//     <Label> is File | Class | Function | ConfigKey, inserted by code from that fixed allowlist (labels cannot
 //     be parameters); the label lets Neo4j use the id constraint instead of scanning every node.
 // MATCH (e:<Label> {id: $entityId, repo: $repo})<-[:AFFECTS]-(d:Decision {repo: $repo})
 // WHERE NOT EXISTS { MATCH (d)<-[s:SUPERSEDES]-(:Decision) WHERE s.kind IN ['reverses','replaces'] }
@@ -135,7 +145,7 @@ CREATE INDEX person_repo          IF NOT EXISTS FOR (p:Person)      ON (p.repo);
 // RETURN e, d, ev, score ORDER BY score DESC LIMIT 8;
 
 // 5f. Entity lookup from the question text (fulltext), filtered to the repo the user is viewing.
-// CALL db.index.fulltext.queryNodes('entity_names', $text) YIELD node, score
+// CALL db.index.fulltext.queryNodes('entity_search', $text) YIELD node, score
 // WHERE node.repo = $repo
 // RETURN node, score ORDER BY score DESC LIMIT 5;
 
