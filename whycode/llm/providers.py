@@ -21,12 +21,15 @@ class IncompleteResponseError(RuntimeError):
 class Provider(Protocol):
     name: str
     model: str
+    # Hosted APIs count against LLM_MAX_CALLS; a local model costs nothing and does not.
+    counts_against_budget: bool
 
     def complete_json(self, system: str, user: str) -> str: ...
 
 
 class GeminiProvider:
     name = "gemini"
+    counts_against_budget = True
 
     def __init__(self, api_key: str, model: str, timeout_s: int = DEFAULT_TIMEOUT_S):
         from google import genai
@@ -63,6 +66,7 @@ class GeminiProvider:
 
 class GroqProvider:
     name = "groq"
+    counts_against_budget = True
 
     def __init__(self, api_key: str, model: str, timeout_s: int = DEFAULT_TIMEOUT_S):
         from groq import Groq
@@ -82,6 +86,68 @@ class GroqProvider:
         if choice.finish_reason not in (None, "stop"):
             raise IncompleteResponseError(f"{self.model} stopped early: {choice.finish_reason}")
         text = choice.message.content
+        if not text:
+            raise IncompleteResponseError(f"{self.model} returned no text")
+        return text
+
+
+class LocalHTTPError(RuntimeError):
+    """A non-200 answer from the local model server; carries the status like the SDK errors."""
+
+    def __init__(self, status_code: int, message: str):
+        super().__init__(f"HTTP {status_code}: {message}")
+        self.status_code = status_code
+
+
+class LocalProvider:
+    """A model served by Ollama on this machine (default http://127.0.0.1:11434).
+
+    Uses Ollama's native /api/chat with JSON mode. No rate limits or call budget, but slower than
+    the hosted APIs, so the timeout is generous. num_ctx is raised from Ollama's small default so
+    a whole chunk (about 6k tokens) plus the answer fits.
+    """
+
+    name = "local"
+    counts_against_budget = False
+
+    def __init__(
+        self,
+        model: str,
+        base_url: str = "http://127.0.0.1:11434",
+        timeout_s: int = 600,
+        num_ctx: int = 16384,
+        transport=None,
+    ):
+        import httpx
+
+        self.model = model
+        self.num_ctx = num_ctx
+        self._http = httpx.Client(base_url=base_url, timeout=timeout_s, transport=transport)
+
+    def complete_json(self, system: str, user: str) -> str:
+        resp = self._http.post(
+            "/api/chat",
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+                "format": "json",
+                "stream": False,
+                "options": {"temperature": 0, "num_ctx": self.num_ctx},
+            },
+        )
+        if resp.status_code != 200:
+            try:
+                message = str(resp.json().get("error", ""))[:200]
+            except Exception:
+                message = resp.text[:200]
+            raise LocalHTTPError(resp.status_code, message)
+        data = resp.json()
+        if data.get("done_reason") not in (None, "stop"):
+            raise IncompleteResponseError(f"{self.model} stopped early: {data.get('done_reason')}")
+        text = (data.get("message") or {}).get("content")
         if not text:
             raise IncompleteResponseError(f"{self.model} returned no text")
         return text

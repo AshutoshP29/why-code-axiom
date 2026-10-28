@@ -35,7 +35,12 @@ class Settings(BaseSettings):
     groq_api_key: SecretStr
     gemini_model: str
     groq_model: str
-    llm_max_calls: int = Field(ge=0)
+    llm_max_calls: int = Field(ge=0)  # cap on calls to the hosted APIs per run
+    # Optional local model served by Ollama. Unset LOCAL_LLM_MODEL = no local provider.
+    local_llm_model: str | None = None
+    local_llm_url: str = "http://127.0.0.1:11434"
+    # Order to try providers in, comma-separated: gemini, groq, local.
+    llm_providers: str = "gemini,groq,local"
 
     github_token: SecretStr
     postgres_dsn: SecretStr
