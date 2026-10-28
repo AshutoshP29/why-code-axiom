@@ -14,6 +14,7 @@ import { whyPath } from '../lib/routes'
 
 const RELATED_CAPTION: Record<EntityKind, string> = {
   config: 'Mention the setting, but do not justify its value',
+  class: 'Mention the class, but do not explain it',
   function: 'Mention the function, but do not explain it',
   file: 'Mention the file, but do not explain it',
   module: 'Mention the module, but do not explain it',

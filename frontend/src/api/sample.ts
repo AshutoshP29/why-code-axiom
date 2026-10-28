@@ -69,6 +69,11 @@ function fn(path: string, qualified: string): Entity {
   return { id: id('fn', `${path}::${qualified}`), kind: 'function', name, qualified_name: qualified, path }
 }
 
+function cls(path: string, qualified: string): Entity {
+  const name = qualified.slice(qualified.lastIndexOf('.') + 1)
+  return { id: id('cls', `${path}::${qualified}`), kind: 'class', name, qualified_name: qualified, path }
+}
+
 function cfg(path: string, key: string, qualified = key): Entity {
   return { id: id('cfg', key), kind: 'config', name: key, qualified_name: qualified, path }
 }
@@ -85,6 +90,7 @@ export const E = {
   auth: file(AUTH),
   models: file(MODELS),
   utils: file(UTILS),
+  sessionClass: cls(SESSIONS, 'Session'),
   rebuildAuth: fn(SESSIONS, 'Session.rebuild_auth'),
   resolveRedirects: fn(SESSIONS, 'Session.resolve_redirects'),
   mergeEnv: fn(SESSIONS, 'Session.merge_environment_settings'),
