@@ -53,4 +53,16 @@ describe('dev proxy', () => {
     expect(await res.json()).toEqual([])
     expect(backend.paths).toEqual(['/api/entities/search?repo=psf%2Frequests&q=auth'])
   })
+
+  it('answers with a FastAPI-style detail when the backend is not running', async () => {
+    const backend = await fakeBackend()
+    await closeServer(backend.server) // a port nothing listens on
+    const base = await devServer(backend.url)
+
+    const res = await fetch(`${base}/api/repos`)
+    expect(res.status).toBe(502)
+    expect(await res.json()).toEqual({
+      detail: `The WhyCode API is not reachable at ${backend.url}. Start the backend, or run without VITE_API_URL to use sample data.`,
+    })
+  })
 })

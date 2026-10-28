@@ -11,6 +11,17 @@ const API_TARGET = 'http://127.0.0.1:8000'
 const apiProxy: ProxyOptions = {
   target: API_TARGET,
   changeOrigin: true,
+  configure(proxy, options) {
+    // With the backend down, answer as FastAPI would, so the app shows this instead of "Bad Gateway".
+    proxy.on('error', (_err, _req, res) => {
+      if (!('writeHead' in res) || res.headersSent) return
+      res.writeHead(502, { 'Content-Type': 'application/json' }).end(
+        JSON.stringify({
+          detail: `The WhyCode API is not reachable at ${String(options.target)}. Start the backend, or run without VITE_API_URL to use sample data.`,
+        }),
+      )
+    })
+  },
 }
 
 export default defineConfig({
