@@ -124,7 +124,9 @@ class LLMClient:
         backoff_s: float = 20.0,
         max_wait_s: float = 120.0,
         trip_after: int = 2,
+        cooldown_s: float = 600.0,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
         redact: Callable[[str], str] = lambda s: s,
     ):
         if not providers:
@@ -132,9 +134,9 @@ class LLMClient:
         self.providers, self.cache, self.budget = list(providers), cache, budget
         self.max_rounds, self.backoff_s, self.max_wait_s = max_rounds, backoff_s, max_wait_s
         self._sleep, self._redact = sleep, redact
-        self.trip_after = trip_after
+        self.trip_after, self.cooldown_s, self._clock = trip_after, cooldown_s, clock
         self._down_streak: dict[str, int] = {}
-        self.tripped: set[str] = set()
+        self._tripped_at: dict[str, float] = {}
         self.api_calls = 0
         self.cache_hits = 0
 
@@ -244,17 +246,29 @@ class LLMClient:
             _is_hosted(p) and p.name not in self.tripped for p in self.providers
         )
 
+    @property
+    def tripped(self) -> set[str]:
+        """Providers switched off right now. Each comes back after cooldown_s for another try."""
+        now = self._clock()
+        return {n for n, at in self._tripped_at.items() if now - at < self.cooldown_s}
+
+    def all_switched_off(self) -> bool:
+        return {p.name for p in self.providers} <= self.tripped
+
     def _note_failure(self, name: str, reason: str) -> None:
         if reason not in TRIPS_BREAKER:
             self._down_streak[name] = 0
             return
         self._down_streak[name] = self._down_streak.get(name, 0) + 1
         if self._down_streak[name] >= self.trip_after and name not in self.tripped:
-            self.tripped.add(name)
+            self._tripped_at[name] = self._clock()
+            # After the cool-down it gets one try: a single failure switches it off again.
+            self._down_streak[name] = self.trip_after - 1
             log.warning(
-                "%s unavailable %d times in a row; skipping it for this run",
+                "%s unavailable %d times in a row; skipping it for %.0f minutes",
                 name,
-                self._down_streak[name],
+                self.trip_after,
+                self.cooldown_s / 60,
             )
 
 

@@ -251,3 +251,47 @@ def test_too_large_is_reported_in_error_reasons():
     with pytest.raises(LLMError) as info:
         ask(client)
     assert info.value.reasons == ("too_large", "too_large") and slept == []
+
+
+def test_breaker_lets_a_provider_back_in_after_the_cooldown():
+    now = [0.0]
+    gemini = FakeProvider("gemini", "g", [StatusError(503), StatusError(503), '{"back": 1}'])
+    groq = FakeProvider("groq", "q", ['{"a": 1}', '{"a": 2}', '{"a": 3}'])
+    client = LLMClient(
+        [gemini, groq], MemoryLLMCache(), Budget(20), cooldown_s=600, clock=lambda: now[0]
+    )
+    ask(client, "1")
+    ask(client, "2")
+    assert client.tripped == {"gemini"}
+    ask(client, "3")  # still cooling down: gemini is not asked
+    assert len(gemini.calls) == 2
+    now[0] = 601.0
+    assert client.tripped == set()
+    assert ask(client, "4").provider == "gemini"  # recovered
+
+
+def test_after_the_cooldown_one_more_failure_switches_it_off_again():
+    now = [0.0]
+    gemini = FakeProvider("gemini", "g", [StatusError(503)] * 3)
+    client = LLMClient(
+        [gemini, FakeProvider("groq", "q")], MemoryLLMCache(), Budget(20), clock=lambda: now[0]
+    )
+    ask(client, "1")
+    ask(client, "2")
+    now[0] = 601.0
+    ask(client, "3")
+    assert client.tripped == {"gemini"} and len(gemini.calls) == 3
+
+
+def test_all_switched_off():
+    client = LLMClient(
+        [FakeProvider("gemini", "g", [StatusError(503)] * 9)],
+        MemoryLLMCache(),
+        Budget(20),
+        backoff_s=0,
+        sleep=lambda s: None,
+    )
+    assert not client.all_switched_off()
+    with pytest.raises(LLMError):
+        ask(client, "1")
+    assert client.all_switched_off()
