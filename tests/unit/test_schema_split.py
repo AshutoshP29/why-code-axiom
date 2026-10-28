@@ -3,8 +3,9 @@ from whycode.graph.schema import load_statements, split_statements
 
 def test_real_schema_splits_into_create_statements():
     stmts = load_statements()
-    assert len(stmts) == 20  # 11 constraints, 1 vector, 1 fulltext, 7 range indexes
-    assert all(s.startswith("CREATE ") for s in stmts)
+    # 12 constraints, 1 vector, 1 drop of the pre-v4 fulltext index, 1 fulltext, 7 range indexes
+    assert len(stmts) == 22
+    assert all(s.startswith(("CREATE ", "DROP INDEX entity_names IF EXISTS")) for s in stmts)
     assert all("//" not in s and ";" not in s for s in stmts)
 
 
@@ -12,6 +13,9 @@ def test_real_schema_keeps_vector_and_fulltext_statements_whole():
     stmts = load_statements()
     vector = [s for s in stmts if "VECTOR INDEX" in s]
     fulltext = [s for s in stmts if "FULLTEXT INDEX" in s]
+    assert (
+        "entity_search" in fulltext[0] and "n:File|Class|Function|Module|ConfigKey" in fulltext[0]
+    )
     assert len(vector) == 1 and "`vector.dimensions`: 384" in vector[0]
     assert len(fulltext) == 1 and "n.aliases_text" in fulltext[0]
 
