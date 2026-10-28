@@ -128,3 +128,13 @@ def test_prefix_matching_todays_module_path_is_accepted(index):
     for name in ("lib.fixture.utils.to_text", "fixture.utils.to_text"):
         r = check(index, {"kind": "function", "path": "fixture/utils.py", "name": name})
         assert r.kept[0].name == "to_text" and r.kept[0].note == "module prefix dropped", name
+
+
+def test_class_kind_is_accepted(index):
+    r = check(index, {"kind": "class", "path": "src/fixture/compat.py", "name": "Detector"})
+    assert r.kept[0].kind is EntityKind.CLASS and r.kept[0].note is None
+
+
+def test_function_named_as_a_class_is_kept_as_a_function(index):
+    r = check(index, {"kind": "class", "path": "fixture/utils.py", "name": "to_text"})
+    assert r.kept[0].kind is EntityKind.FUNCTION and r.kept[0].note == "is a function"
