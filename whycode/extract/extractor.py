@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 
 DEFAULT_MAX_CHARS = 16_000  # per chunk of sources; roughly 4k tokens
 MERGE_SIMILARITY = 0.5
+ALTERNATIVE_SIMILARITY = 0.6  # two alternatives this alike in words are the same option
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,22 @@ def _similar(a: Decision, b: Decision) -> bool:
     return bool(wa and wb) and len(wa & wb) / len(wa | wb) >= MERGE_SIMILARITY
 
 
+def dedupe_alternatives(alternatives: list[str]) -> list[str]:
+    """Drop alternatives that reword one already kept ("Keep chardet as default" and "Keep
+    chardet as the default detector"), keeping the first wording seen."""
+    kept: list[str] = []
+    kept_words: list[set[str]] = []
+    for alt in alternatives:
+        words = _words(alt)
+        if not words:
+            continue
+        if any(len(words & w) / len(words | w) >= ALTERNATIVE_SIMILARITY for w in kept_words):
+            continue
+        kept.append(alt)
+        kept_words.append(words)
+    return kept
+
+
 def _merge_into(base: Decision, other: Decision) -> None:
     seen = {(e.source.source_id, e.span) for e in base.evidence}
     for e in other.evidence:
@@ -165,7 +182,7 @@ def _merge_into(base: Decision, other: Decision) -> None:
             base.evidence.append(e)
             seen.add((e.source.source_id, e.span))
     d = base.data
-    alts = list(dict.fromkeys([*d.alternatives, *other.data.alternatives]))
+    alts = [*d.alternatives, *other.data.alternatives]
     affects = list(
         {(a.kind, a.path, a.name): a for a in [*d.affects, *other.data.affects]}.values()
     )
@@ -214,6 +231,9 @@ def merge_decisions(decisions: list[Decision]) -> list[Decision]:
         for other in group[1:]:
             _merge_into(group[0], other)
         merged.append(group[0])
+    for d in merged:
+        alternatives = dedupe_alternatives(d.data.alternatives)
+        d.data = d.data.model_copy(update={"alternatives": alternatives})
     return sorted(merged, key=lambda x: (x.data.decided_at, x.data.summary))
 
 

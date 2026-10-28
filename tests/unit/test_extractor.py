@@ -332,3 +332,36 @@ def test_rerun_replays_split_parts_from_cache_with_no_calls():
     assert [c.label for c in second.chunks] == ["1.1", "1.2"]
     assert all(c.cached for c in second.chunks) and second.stopped_early is None
     assert again.api_calls == 0
+
+
+def test_reworded_alternatives_are_kept_once():
+    from whycode.extract.extractor import dedupe_alternatives
+
+    alts = [
+        "Keep chardet as the default detector",
+        "Keep chardet as default",
+        "Continue using chardet as the default detector",
+        "Use cchardet instead",
+        "use cchardet instead.",
+        "",
+    ]
+    assert dedupe_alternatives(alts) == [
+        "Keep chardet as the default detector",
+        "Use cchardet instead",
+    ]
+
+
+def test_merged_decision_alternatives_are_deduplicated():
+    t = thread()
+    first = reply(decision(quotes=(("pr:1565:ic:9001", LGPL),), alternatives=["Keep X as default"]))
+    second = reply(
+        decision(
+            summary="Switch the X parser for Y now",
+            quotes=(("pr:1565:ic:9002", SWITCH),),
+            alternatives=["Keep X as the default", "Vendor X"],
+        )
+    )
+    n = len(chunk_sources(t, 150))
+    client, _ = llm(*[serve_where_quoted(first, second)] * n)
+    (d,) = extract_thread(t, client, max_chars=150).decisions
+    assert d.data.alternatives == ["Keep X as default", "Vendor X"]
