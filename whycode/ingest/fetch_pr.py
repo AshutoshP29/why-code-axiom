@@ -4,7 +4,9 @@
 
 Stored kinds (key in brackets):
     pr [N], issue [N], issue_comments [N:pP], review_comments [N:pP], reviews [N:pP],
-    pr_commits [N:pP], pr_files [N:pP], timeline [N:pP]
+    pr_commits [N:pP], pr_files [N:pP], timeline [N:pP],
+    blob [<blob sha>]   content of each changed Python file as the PR left it (immutable)
+    tree [<branch>]     today's file list of the default branch, to map old paths to current ones
 """
 
 import argparse
@@ -13,6 +15,7 @@ import sys
 from dataclasses import dataclass, field
 from typing import Protocol
 
+from whycode.code.entities import is_supported
 from whycode.ids import normalize_repo
 from whycode.ingest.github import GitHubClient
 from whycode.ingest.links import closing_refs, parse_refs
@@ -51,6 +54,8 @@ class PrFetch:
     files: list
     timeline: list
     linked: list[LinkedIssue] = field(default_factory=list)
+    blobs: dict[str, str] = field(default_factory=dict)  # changed .py path -> blob sha fetched
+    tree_branch: str | None = None  # default branch whose tree was fetched
 
 
 class _Fetcher:
@@ -65,6 +70,15 @@ class _Fetcher:
             return row.payload
         self.store.upsert(self.repo, kind, key, resp.etag, resp.data)
         return resp.data
+
+    def blob(self, sha: str):
+        """A git blob never changes, so a stored one is used without asking GitHub again."""
+        row = self.store.get(self.repo, "blob", sha)
+        if row is not None:
+            return row.payload
+        data = self.gh.get(f"/repos/{self.repo}/git/blobs/{sha}").data
+        self.store.upsert(self.repo, "blob", sha, None, data)
+        return data
 
     def pages(self, kind: str, number: int, path: str) -> list:
         """Fetch a paginated list page by page; each page is its own row with its own ETag."""
@@ -117,7 +131,30 @@ def fetch_pr(gh: GitHubClient, store: Store, repo: str, number: int) -> PrFetch:
         issue = f.one("issue", str(linked), f"{base}/issues/{linked}")
         comments = f.pages("issue_comments", linked, f"{base}/issues/{linked}/comments")
         result.linked.append(LinkedIssue(linked, reason, issue, comments))
+    _fetch_code(f, result)
     return result
+
+
+def default_branch(pr: dict) -> str | None:
+    return ((pr.get("base") or {}).get("repo") or {}).get("default_branch")
+
+
+def _fetch_code(f: _Fetcher, result: PrFetch) -> None:
+    """Changed Python files as the PR left them, and today's tree for path mapping."""
+    for changed in result.files:
+        path, sha = changed["filename"], changed.get("sha")
+        if changed.get("status") == "removed" or not sha or not is_supported(path):
+            continue
+        f.blob(sha)
+        result.blobs[path] = sha
+    branch = default_branch(result.pr)
+    if branch is None:
+        log.warning("PR payload has no default branch; old paths cannot be mapped to current ones")
+        return
+    tree = f.one("tree", branch, f"/repos/{f.repo}/git/trees/{branch}", {"recursive": "1"})
+    if tree.get("truncated"):
+        log.warning("tree of %s is truncated by GitHub; some current paths may be missing", branch)
+    result.tree_branch = branch
 
 
 def main() -> int:
@@ -151,6 +188,8 @@ def main() -> int:
             print(f"  timeline events  {len(r.timeline)}")
             for li in r.linked:
                 print(f"  linked #{li.number} ({li.reason}): {len(li.comments)} comments")
+            print(f"  python files     {len(r.blobs)} fetched as the PR left them")
+            print(f"  current tree     {r.tree_branch or 'not fetched'}")
             st = gh.stats
             print(
                 f"  GitHub requests  {st.requests} ({st.not_modified} not modified, "
