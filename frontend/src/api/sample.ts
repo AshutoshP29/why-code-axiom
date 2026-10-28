@@ -1,6 +1,7 @@
 // Sample data that mirrors the Figma designs, so the screens work before the API exists.
 // Every person, number and decision here is made up. Links open real GitHub searches in
-// psf/requests rather than invented PR pages. The UI shows "Sample data" while this is in use.
+// psf/requests rather than invented PR pages. Every id is built the way whycode/ids.py builds it.
+// The UI shows "Sample data" while this is in use.
 
 import type {
   Answer,
@@ -46,9 +47,32 @@ const issue = (n: number, term: string): SourceRef => ({
   label: `Issue #${n}`,
   url: search(term, 'issues'),
 })
-const commit = (sha: string, term: string): SourceRef => ({
-  id: id('commit', sha),
-  label: `Commit ${sha}`,
+/** Invented commits. Ids carry the full 40-character sha, as in the graph; screens show the first 7. */
+const FULL_SHA: Record<string, string> = {
+  a1b2c3d: 'a1b2c3daf81ce2c3d2d61bef8cd2dfa780e9cab2',
+  c1d4a99: 'c1d4a998d940813fa6150f29a6c3c92998854065',
+  '4b7e2d1': '4b7e2d11d65fa1c3b33418784fc0e2c428187950',
+  d7a3f10: 'd7a3f1016b0f70cd8ec7b0b65de30e759309f2b2',
+  f3e91c2: 'f3e91c27d0502053d2700037d9d41fe4cb965ca9',
+  b82d7e0: 'b82d7e05c6446873edb555fce5dc470ad5a10a61',
+  '9e0f5b1': '9e0f5b13f0e228a2e19074d2b8063eb024bc8242',
+  '7d3e1aa': '7d3e1aa72765f4db397e58ff21d75ece1ab5a506',
+  '5c8f0e2': '5c8f0e2d5a46bbeb80d24138d0c9d2552d72b33b',
+  '0b9d7c4': '0b9d7c433279465671fe579d0fb5035ae7ab8277',
+  '2e6a9f3': '2e6a9f39d07dc50a99667e1bed31ecb5a7f7c68f',
+  '3c9b2e7': '3c9b2e7ea5c00e182155e3358d8333d6390a8f5c',
+  e4f5a6b: 'e4f5a6bcbab96414596b7cd1f2f72b62d926e7d8',
+}
+
+function fullSha(short: string): string {
+  const sha = FULL_SHA[short]
+  if (!sha) throw new Error(`No full sha for sample commit ${short}`)
+  return sha
+}
+
+const commit = (short: string, term: string): SourceRef => ({
+  id: id('commit', fullSha(short)),
+  label: `Commit ${short}`,
   url: search(term, 'commits'),
 })
 const code = (path: string, term: string): SourceRef => ({
@@ -299,6 +323,10 @@ const person = (login: string, role: string, active: boolean, last_seen: string)
 
 // ---------- decisions ----------
 
+/**
+ * `key` is decision_key(source id, "extract-v2", 0) from whycode/ids.py: each sample decision is the
+ * first one extracted from its source, with the prompt version in whycode/extract/prompt.py.
+ */
 function decision(
   key: string,
   fields: Omit<Decision, 'id' | 'evidence_kind' | 'reviewed_by'> &
@@ -314,7 +342,7 @@ function decision(
   }
 }
 
-const RA1 = decision('ra1', {
+const RA1 = decision('1c247d00b677b378', {
   summary: 'Forward the header on every redirect',
   rationale: 'Redirects were treated as part of the same request, so auth went along unchanged.',
   decided_at: '2012-11-02',
@@ -325,7 +353,7 @@ const RA1 = decision('ra1', {
 })
 
 const RA2 = decision(
-  'ra2',
+  '155ebf64b6fa487c',
   {
     summary: 'Strip the Authorization header when a redirect changes host',
     rationale:
@@ -339,7 +367,7 @@ const RA2 = decision(
   [{ decision_id: RA1.id, kind: 'replaces' }],
 )
 
-const MR1 = decision('mr1', {
+const MR1 = decision('3bf1fc9dfbee99f0', {
   summary: 'Retry failed requests up to 10 times',
   rationale: 'Default of 10 retries chosen to hide flaky networks.',
   decided_at: '2012-06-04',
@@ -349,7 +377,7 @@ const MR1 = decision('mr1', {
 })
 
 const MR2 = decision(
-  'mr2',
+  '4acafa2cdf3e5064',
   {
     summary: 'Cap retries at 3 and add backoff',
     rationale: 'Limit lowered after retry storms; backoff introduced for connection errors only.',
@@ -362,7 +390,7 @@ const MR2 = decision(
 )
 
 const MR3 = decision(
-  'mr3',
+  'd51e4a05c292ace2',
   {
     summary: 'Retries off by default, opt in with a Retry object',
     rationale: 'Silent retries caused duplicate side effects on non-idempotent calls.',
@@ -375,7 +403,7 @@ const MR3 = decision(
   [{ decision_id: MR2.id, kind: 'refines' }],
 )
 
-const V1 = decision('v1', {
+const V1 = decision('97486b58f76a530c', {
   summary: 'Verify TLS certificates by default',
   rationale:
     'Unchecked certificates let a man-in-the-middle pass silently, so callers who need to skip the check must say verify=False.',
@@ -387,7 +415,7 @@ const V1 = decision('v1', {
 })
 
 // The hedged sample: the reason is only inferred, from one commit message and nothing else.
-const T1 = decision('t1', {
+const T1 = decision('3e429f501fd9e9ec', {
   summary: 'Leave timeouts to the caller',
   rationale: 'Inferred from a commit message: a fixed default would cut off slow downloads that are still working.',
   decided_at: '2013-08-19',
@@ -483,17 +511,17 @@ const REBUILD_AUTH: AnsweredAnswer = {
       node(E.resolveRedirects.id, 'entity', 'SessionRedirectMixin.resolve_redirects', {
         entity_id: E.resolveRedirects.id,
       }),
-      node('pr-1565', 'pull_request', 'PR #1565', { url: pr(1565, 'rebuild_auth').url }),
-      node('issue-812', 'issue', 'Issue #812', { url: issue(812, 'redirect').url }),
-      node('commit-a1b2c3d', 'commit', 'a1b2c3d', { url: commit('a1b2c3d', 'rebuild_auth').url }),
+      node(id('pr', '1565'), 'pull_request', 'PR #1565', { url: pr(1565, 'rebuild_auth').url }),
+      node(id('issue', '812'), 'issue', 'Issue #812', { url: issue(812, 'redirect').url }),
+      node(id('commit', fullSha('a1b2c3d')), 'commit', 'a1b2c3d', { url: commit('a1b2c3d', 'rebuild_auth').url }),
       node(RA1.id, 'decision', 'Forward on every redirect', { dimmed: true, url: RA1.source.url }),
     ],
     edges: [
       edge(RA2.id, E.rebuildAuth.id, 'AFFECTS'),
       edge(RA2.id, E.resolveRedirects.id, 'AFFECTS'),
-      edge(RA2.id, 'pr-1565', 'DECIDED_IN'),
-      edge('pr-1565', 'issue-812', 'CLOSES'),
-      edge(RA2.id, 'commit-a1b2c3d', 'SUPPORTED_BY'),
+      edge(RA2.id, id('pr', '1565'), 'DECIDED_IN'),
+      edge(id('pr', '1565'), id('issue', '812'), 'CLOSES'),
+      edge(RA2.id, id('commit', fullSha('a1b2c3d')), 'SUPPORTED_BY'),
       edge(RA2.id, RA1.id, 'SUPERSEDES'),
     ],
   },
@@ -557,16 +585,16 @@ const MAX_RETRIES: AnsweredAnswer = {
       node(MR3.id, 'decision', 'Off by default', { center: true, url: MR3.source.url }),
       node(E.maxRetries.id, 'entity', 'max_retries', { entity_id: E.maxRetries.id }),
       node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
-      node('pr-5012', 'pull_request', 'PR #5012', { url: pr(5012, 'max_retries').url }),
-      node('issue-4991', 'issue', 'Issue #4991', { url: issue(4991, 'retry').url }),
+      node(id('pr', '5012'), 'pull_request', 'PR #5012', { url: pr(5012, 'max_retries').url }),
+      node(id('issue', '4991'), 'issue', 'Issue #4991', { url: issue(4991, 'retry').url }),
       node(MR2.id, 'decision', 'Cap at 3 with backoff', { url: MR2.source.url }),
       node(MR1.id, 'decision', 'Retry up to 10 times', { dimmed: true, url: MR1.source.url }),
     ],
     edges: [
       edge(MR3.id, E.maxRetries.id, 'AFFECTS'),
       edge(MR3.id, E.send.id, 'AFFECTS'),
-      edge(MR3.id, 'pr-5012', 'DECIDED_IN'),
-      edge('pr-5012', 'issue-4991', 'CLOSES'),
+      edge(MR3.id, id('pr', '5012'), 'DECIDED_IN'),
+      edge(id('pr', '5012'), id('issue', '4991'), 'CLOSES'),
       edge(MR3.id, MR2.id, 'SUPERSEDES'),
       edge(MR2.id, MR1.id, 'SUPERSEDES'),
     ],
@@ -633,14 +661,14 @@ const VERIFY: AnsweredAnswer = {
       node(E.mergeEnv.id, 'entity', 'Session.merge_environment_settings', {
         entity_id: E.mergeEnv.id,
       }),
-      node('pr-300', 'pull_request', 'PR #300', { url: pr(300, 'verify').url }),
-      node('issue-271', 'issue', 'Issue #271', { url: issue(271, 'certificate').url }),
+      node(id('pr', '300'), 'pull_request', 'PR #300', { url: pr(300, 'verify').url }),
+      node(id('issue', '271'), 'issue', 'Issue #271', { url: issue(271, 'certificate').url }),
     ],
     edges: [
       edge(V1.id, E.verify.id, 'AFFECTS'),
       edge(V1.id, E.mergeEnv.id, 'AFFECTS'),
-      edge(V1.id, 'pr-300', 'DECIDED_IN'),
-      edge('pr-300', 'issue-271', 'CLOSES'),
+      edge(V1.id, id('pr', '300'), 'DECIDED_IN'),
+      edge(id('pr', '300'), id('issue', '271'), 'CLOSES'),
     ],
   },
 }
@@ -691,12 +719,12 @@ const TIMEOUT: HedgedAnswer = {
       node(T1.id, 'decision', 'Leave timeouts to the caller', { center: true, url: T1.source.url }),
       node(E.timeout.id, 'entity', 'timeout', { entity_id: E.timeout.id }),
       node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
-      node('commit-d7a3f10', 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
+      node(id('commit', fullSha('d7a3f10')), 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
     ],
     edges: [
       edge(T1.id, E.timeout.id, 'AFFECTS'),
       edge(T1.id, E.send.id, 'AFFECTS'),
-      edge(T1.id, 'commit-d7a3f10', 'SUPPORTED_BY'),
+      edge(T1.id, id('commit', fullSha('d7a3f10')), 'SUPPORTED_BY'),
     ],
   },
 }
@@ -724,7 +752,7 @@ const POOL_MAXSIZE: RefusedAnswer = {
       detail:
         'Three later commits touched the line (formatting, rename, type hints). None changed the number or explained it.',
       meta: ['3 commits, 2013 to 2022'],
-      source: commit('pool_maxsize', 'pool_maxsize'),
+      source: code(ADAPTERS, 'pool_maxsize'),
     },
   ],
   related: [
@@ -807,15 +835,15 @@ export function noMatchRefusal(question: string, related: RelatedItem[]): Refuse
 // ---------- lineage ----------
 
 const lineageCommit = (
-  sha: string,
+  short: string,
   date: string,
   message: string,
   decision: LineageDecision | null,
 ): LineageCommit => ({
-  sha,
+  sha: fullSha(short),
   date,
   message,
-  url: search(sha, 'commits'),
+  url: search(short, 'commits'),
   decision_id: decision?.id ?? null,
 })
 
