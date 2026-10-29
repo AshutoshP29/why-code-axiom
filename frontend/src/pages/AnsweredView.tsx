@@ -75,7 +75,9 @@ export function AnsweredView({
           <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-faint">
             <span>Decided {decidedOn}</span>
             {d.proposed_by && <span>Proposed by @{d.proposed_by}</span>}
-            {d.reviewed_by && <span>Reviewed by @{d.reviewed_by}</span>}
+            {d.approved_by.length > 0 && <span>Approved by {d.approved_by.map((login) => `@${login}`).join(', ')}</span>}
+            {/* A reviewer who also approved is named once, as an approver. */}
+            {d.reviewed_by && !d.approved_by.includes(d.reviewed_by) && <span>Reviewed by @{d.reviewed_by}</span>}
             <a href={d.source.url} target="_blank" rel="noreferrer" className="text-blue hover:underline">
               {d.source.label}
             </a>

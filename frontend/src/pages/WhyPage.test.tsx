@@ -91,6 +91,27 @@ describe('Why Workspace', () => {
     ])
   })
 
+  it('names everyone who approved the decision next to who proposed it', async () => {
+    renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    expect(await screen.findByText('Proposed by @maintainer_a')).toBeInTheDocument()
+    expect(screen.getByText('Approved by @maintainer_b, @maintainer_c')).toBeInTheDocument()
+    // maintainer_b also reviewed it, and is named once, as an approver.
+    expect(screen.queryByText('Reviewed by @maintainer_b')).not.toBeInTheDocument()
+  })
+
+  it('still names a reviewer who did not approve', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const ask = api.ask
+    api.ask = async (...args) => {
+      const answer = await ask(...args)
+      if (answer.verdict === 'refused') return answer
+      return { ...answer, decision: { ...answer.decision, reviewed_by: 'reviewer_x', approved_by: [] } }
+    }
+    renderApp(whyPath(E.rebuildAuth.id, 'q'), { api })
+    expect(await screen.findByText('Reviewed by @reviewer_x')).toBeInTheDocument()
+    expect(screen.queryByText(/^Approved by/)).not.toBeInTheDocument()
+  })
+
   it('leaves out "Also considered" when no other option was recorded', async () => {
     renderApp(whyPath(E.timeout.id, 'q'))
     expect(await screen.findByText('Low confidence')).toBeInTheDocument()
