@@ -148,10 +148,13 @@ def test_search_with_no_words_sends_no_query():
     [
         (
             "Why does Response.apparent_encoding use it?",
-            "Why does Response.apparent_encoding use it",
+            "why does response.apparent_encoding use it",
         ),
         ('a:b (c) "d" ~e* -f', "a b c d e f"),
         ("...", ""),
+        # Uppercase AND / OR / NOT / TO would be operators; a trailing one failed to parse.
+        ("requests OR", "requests or"),
+        ("Session AND NOT TO", "session and not to"),
     ],
 )
 def test_lucene_query_drops_operators(text, query):
