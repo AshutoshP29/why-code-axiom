@@ -50,9 +50,13 @@ uv run python -m whycode.extract.run --repo psf/requests --pr 5797 --max-calls 1
 ```
 
 Every LLM answer is cached in Postgres by `sha256(prompt_version + model + input)`, so a re-run
-costs no calls. `LLM_MAX_CALLS` is a hard cap per run. Gemini is tried first and Groq is the
-fallback; a provider that keeps failing is skipped for the rest of the run. A decision is kept
-only if every evidence quote is found verbatim (whitespace aside) in the source it cites.
+costs no calls. `LLM_MAX_CALLS` is a hard cap per run, counting every hosted attempt. Gemini is
+tried first and Groq is the fallback. A provider that is down twice in a row is skipped for 10
+minutes, and so is one whose quota is used up (three rate limits in a row with no retry hint);
+one that asks for a longer wait than 120 s is skipped for as long as it asked. Shorter rate
+limits are waited out. A part too large for a provider (HTTP 413) is split in two and retried. A
+decision is kept only if every evidence quote is found verbatim (whitespace aside) in the source
+it cites.
 
 After extraction, each decision's `affects` is checked against the code the PR touched: the PR's
 changed Python files are parsed with tree-sitter (`whycode/code/`), and a file, function, class or
@@ -72,11 +76,45 @@ query 5a: the current decision for the code the extraction linked most, with its
 evidence, URLs, people and date. It also shows a refusal for code the PR changed that no decision
 explains: facts only (which commit changed it, who last did), never an invented reason.
 
+## Pipeline (Phase 2, many pull requests)
+
+```sh
+# Queue the most discussed merged PRs (dependency bumps skipped), fetch them and plan extraction.
+# GitHub calls only: shows per PR how many prompt parts are needed and how many are cached.
+uv run python -m whycode.ingest.run --repo psf/requests --min-comments 20 --limit 63 --dry-run
+
+# The real run: fetch, extract, check affects and write each PR to the graph.
+uv run python -m whycode.ingest.run --repo psf/requests --min-comments 20 --limit 63 --max-calls 160
+```
+
+Every PR is a row in the Postgres `jobs` table, so a run can be stopped and started again: written
+PRs are skipped and cached LLM answers cost nothing (`--no-select` only resumes the queue). A PR
+GitHub cannot serve is marked failed and one the LLM cannot answer stays queued; the run goes on.
+It stops only when the budget is spent, every provider is switched off or GitHub's rate limit is
+hit, and what was written stays written.
+
+`--redo-fallback` sends written PRs back to the queue when any part of them was answered by the
+local model, and redoes them with Gemini and Groq only (no LLM calls to decide which).
+
+### Supersession
+
+```sh
+uv run python -m whycode.graph.supersession --repo psf/requests --dry-run   # pairs, 0 LLM calls
+uv run python -m whycode.graph.supersession --repo psf/requests
+```
+
+Pairs an older decision with a newer one on the same code (or the same file with a similar
+summary), asks the LLM whether the newer one replaces, refines or reverses it, and writes a
+`SUPERSEDES` edge only when the verdict cites the newer decision's own evidence. Statuses are then
+recomputed (SUPERSEDED or PARTIAL), so query 5a shows only what governs the code today. Running it
+twice changes nothing.
+
 ## Local model (optional)
 
 A model served by [Ollama](https://ollama.com) on this machine can extract too. It costs no API
-calls and has no rate limits, so it is the fallback when Gemini and Groq are down, and it can go
-first for bulk ingestion:
+calls and has no rate limits, but it is much weaker (on PR 5797 it found 1 decision where the
+hosted models found 12), so it is the last resort: it answers only when no hosted provider can,
+and `--redo-fallback` replaces its answers later:
 
 ```sh
 ollama pull qwen2.5:7b-instruct                  # about 4.7 GB
@@ -107,8 +145,10 @@ Every path is under `/api` and matches `frontend/src/api/types.ts`; a unit test 
 models drift from it. CORS allows the Vite dev server (`http://localhost:5173`). `/ask` scores
 confidence from five factors (entity match 0.25, evidence directness 0.25, independent sources
 0.20, supersession resolved 0.15, citation pass 0.15) and answers at 0.70 or more, hedges from
-0.40, and refuses below. Flagged gaps go to the Postgres table `gaps`. `/repos/check`, `POST
-/repos`, `/repos/sync`, `/repos/reingest`, `/ingestion` and `/evaluation` return 501 for now.
+0.40, and refuses below. A question whose best search match is below 0.5 is refused outright,
+with the closest items listed to pick from, so it is never answered about the wrong code.
+Flagged gaps go to the Postgres table `gaps`. `/repos/check`, `POST /repos`, `/repos/sync`,
+`/repos/reingest`, `/ingestion` and `/evaluation` return 501 for now.
 
 ## Tests
 
@@ -126,8 +166,8 @@ uv run ruff check .
 whycode/
   config.py        settings from .env
   ids.py           make_id(repo, kind, key) -> "psf/requests#pr:1565"
-  ingest/          GitHub fetch -> Postgres raw cache
-  graph/           Neo4j driver wrapper, schema runner, MERGE-only writers
+  ingest/          GitHub fetch -> Postgres raw cache; PR selection, jobs, the batch runner
+  graph/           Neo4j driver wrapper, schema runner, MERGE-only writers, supersession
     schema.cypher  the graph contract (source of truth)
   code/            tree-sitter parser: files, classes, functions, config keys
   extract/         LLM decision extraction (prompt + pydantic models)
