@@ -50,6 +50,7 @@ REL_TYPES = frozenset(
         "CONTAINS",
         "CLOSES",
         "REFERENCES",
+        "REVERTS",
         "MODIFIES",
         "AUTHORED",
         "REVIEWED",

@@ -158,3 +158,12 @@ def test_same_input_builds_the_same_batch():
     b1 = build_pr_graph(p.store, p.thread, p.result.decisions, p.checks, **kw)
     b2 = build_pr_graph(p.store, p.thread, p.result.decisions, p.checks, **kw)
     assert b1.nodes == b2.nodes and b1.rels == b2.rels
+
+
+def test_batch_accepts_every_relationship_the_schema_lists_for_commits():
+    from whycode.graph.build import GraphBatch
+
+    b = GraphBatch("psf/requests")
+    a, c = ("Commit", "psf/requests#commit:a"), ("Commit", "psf/requests#commit:b")
+    b.rel("REVERTS", a, c)
+    assert b.count() == (0, 1)
