@@ -254,11 +254,20 @@ def test_breaker_streak_resets_on_success():
     assert client.tripped == set() and len(gemini.calls) == 3
 
 
-def test_rate_limits_never_trip_the_breaker():
-    client, _, groq, _ = make([StatusError(429)] * 4, ['{"a": 1}'] * 4)
+def test_rate_limits_with_successes_between_never_trip_the_breaker():
+    gemini = [StatusError(429), StatusError(429), '{"ok": 1}'] * 2
+    client, _, groq, _ = make(gemini, ['{"a": 1}'] * 4)
     for i in range(4):
         ask(client, str(i))
     assert client.tripped == set()
+
+
+def test_used_up_quota_with_no_hint_switches_the_provider_off_after_three():
+    # Gemini's "exceeded your current quota" 429 carries no retry-after.
+    client, gemini, groq, _ = make([StatusError(429)] * 9, ['{"a": 1}'] * 9)
+    for i in range(5):
+        assert ask(client, str(i)).provider == "groq"
+    assert len(gemini.calls) == 3 and client.tripped == {"gemini"}
 
 
 def test_all_providers_tripped_fails_fast_without_calls():

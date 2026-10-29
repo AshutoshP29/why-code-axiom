@@ -11,6 +11,8 @@
   skipped for cooldown_s, so a dead provider stops costing a call per request.
 - A rate limit that asks for a longer wait than max_wait_s (a daily quota, say) switches that
   provider off for as long as it asked, instead of retrying it and spending the budget.
+  One that is rate limited limit_trip_after times in a row with no hint at all (Gemini's
+  used-up quota) is switched off for cooldown_s.
 - If every provider failed for a transient reason (rate limit, overload, timeout, cut-off reply),
   the whole chain is retried after a backoff, up to max_rounds.
 - dry_run returns what would be sent and makes no call.
@@ -126,6 +128,7 @@ class LLMClient:
         backoff_s: float = 20.0,
         max_wait_s: float = 120.0,
         trip_after: int = 2,
+        limit_trip_after: int = 3,
         cooldown_s: float = 600.0,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
@@ -137,7 +140,9 @@ class LLMClient:
         self.max_rounds, self.backoff_s, self.max_wait_s = max_rounds, backoff_s, max_wait_s
         self._sleep, self._redact = sleep, redact
         self.trip_after, self.cooldown_s, self._clock = trip_after, cooldown_s, clock
+        self.limit_trip_after = limit_trip_after
         self._down_streak: dict[str, int] = {}
+        self._limit_streak: dict[str, int] = {}
         self._off_until: dict[str, float] = {}
         self.api_calls = 0
         self.cache_hits = 0
@@ -230,6 +235,8 @@ class LLMClient:
                     if reason == "rate_limit" and hint > self.max_wait_s:
                         self._switch_off(p.name, hint, f"rate limited for {hint:.0f}s")
                         hint = 0.0  # it is off now; do not wait for it
+                    elif reason == "rate_limit" and hint == 0.0:
+                        self._note_unhinted_limit(p.name)
                     hints.append(hint)
                     msg = self._redact(
                         f"{p.name}/{p.model}: {reason} ({type(exc).__name__}: {_short(exc)})"
@@ -238,7 +245,7 @@ class LLMClient:
                     log.warning("LLM call failed: %s; trying next provider", msg)
                     self._note_failure(p.name, reason)
                     continue
-                self._down_streak[p.name] = 0
+                self._down_streak[p.name] = self._limit_streak[p.name] = 0
                 self.cache.put(
                     cache_key(prompt_version, p.model, prompt_input),
                     response=text,
@@ -279,6 +286,13 @@ class LLMClient:
 
     def all_switched_off(self) -> bool:
         return {p.name for p in self.providers} <= self.tripped
+
+    def _note_unhinted_limit(self, name: str) -> None:
+        self._limit_streak[name] = self._limit_streak.get(name, 0) + 1
+        if self._limit_streak[name] >= self.limit_trip_after:
+            self._limit_streak[name] = 0
+            n = self.limit_trip_after
+            self._switch_off(name, self.cooldown_s, f"rate limited {n} times in a row, no hint")
 
     def _note_failure(self, name: str, reason: str) -> None:
         if reason not in TRIPS_BREAKER:
