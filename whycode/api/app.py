@@ -9,6 +9,7 @@ needs no configuration.
 
 import os
 from contextlib import asynccontextmanager
+from datetime import date
 from functools import lru_cache
 from typing import Annotated
 
@@ -17,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
-from whycode.api import answers, reads
+from whycode.api import answers, lineage, reads
 from whycode.api import models as m
 from whycode.config import ConfigError
 from whycode.graph.queries import Run, neo4j_runner
@@ -113,6 +114,12 @@ def ask(run: RunDep, body: m.AskRequest):
     repo = require_repo(run, repo_id)
     selected = require_entity(run, repo_id, body.entity_id) if body.entity_id else None
     return answers.ask(run, repo, body.question, selected)
+
+
+@router.get("/lineage", response_model=m.Lineage)
+def get_lineage(run: RunDep, repo: RepoDep, entity_id: str, as_of: date | None = None):
+    entity = require_entity(run, repo, entity_id)
+    return lineage.lineage(run, repo, entity, as_of)
 
 
 def _not_implemented():

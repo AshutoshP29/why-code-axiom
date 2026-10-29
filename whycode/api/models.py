@@ -238,7 +238,7 @@ class LineageDecision(Decision):
 class LineageCommit(BaseModel):
     sha: str
     message: str
-    date: datetime | None
+    date: datetime
     url: str
     decision_id: str | None
 
