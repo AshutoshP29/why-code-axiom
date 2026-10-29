@@ -115,19 +115,19 @@ def test_question_without_entity_is_matched_by_search():
     assert a["entity"]["id"] == FN
     assert a["confidence"] == round(0.25 * 0.75 + 0.75, 2)
     search = next(p for c, p in graph.calls if "q:search" in c)
-    assert search["q"] == "Why does apparent_encoding use charset_normalizer"
+    assert search["q"] == "why does apparent_encoding use charset_normalizer"
     assert_repo_filtered(graph)
 
 
 def test_weak_match_on_inferred_single_source_is_hedged():
     row = q5a_row(evidence_kind="INFERRED")
     row["evidence"] = [evidence(0)]
-    weak_hit = {"node": NODES[FN], "score": 0.4286}  # scaled to 0.3
+    weak_hit = {"node": NODES[FN], "score": 1.5}  # scaled to 0.6: above the floor, not good
     graph = FakeGraph(q5a=[row], search=[weak_hit])
     a = ask(graph, entity_id=None).json()
     assert a["verdict"] == "hedged"
-    assert a["confidence"] == 0.6
-    assert a["warning"].startswith("Confidence is limited by entity match (30%)")
+    assert 0.4 <= a["confidence"] < 0.7
+    assert a["warning"].startswith("Confidence is limited by entity match (60%)")
     assert "evidence directness (Inferred)" in a["warning"]
     assert a["decision"]["evidence_kind"] == "INFERRED"
 
@@ -182,7 +182,8 @@ def test_search_skips_modules():
     assert a["entity"]["id"] == FN
 
 
-def test_low_confidence_with_a_decision_is_refused_by_fixed_text():
+def test_low_confidence_with_a_decision_is_refused_by_fixed_text(monkeypatch):
+    monkeypatch.setattr(answers, "MIN_SEARCH_MATCH", 0.0)  # let a zero match reach scoring
     row = q5a_row(evidence_kind="INFERRED")
     row["evidence"] = [{**evidence(0), "end": 0}]  # empty quote: citation fails
     zero_hit = {"node": NODES[FN], "score": 0.0}
@@ -295,3 +296,24 @@ def test_older_decision_without_source():
 
 def test_context_with_no_row():
     assert answers._context(FakeGraph(), REPO, DEC) == ([], [])
+
+
+def test_weak_search_match_is_refused_not_answered_with_an_unrelated_decision():
+    # Seen on the real graph: "What is the capital of France? asked via requests packages"
+    # matched packages.py at 0.05 and was answered at 0.76 with the chardet decision.
+    weak_hit = {"node": NODES[FN], "score": 0.05}
+    other = {"node": NODES[UNEXPLAINED], "score": 0.04}
+    graph = answered_graph(search=[weak_hit, other])
+    a = ask(graph, entity_id=None, question="What is the capital of France?").json()
+    assert a["verdict"] == "refused" and a["reason"] == answers.WEAK_MATCH_REASON
+    assert a["entity"] is None and a["confidence"] < 0.4
+    assert [r["source"]["id"] for r in a["related"]] == [FN, UNEXPLAINED]  # pick one of these
+    assert not any("SUPPORTED_BY" in c for c, _ in graph.calls)  # no decision was looked up
+
+
+def test_the_same_person_quoted_twice_is_one_independent_source():
+    row = q5a_row()
+    row["evidence"] = [evidence(0, author="ashb"), evidence(1, kind="pr_comment", author="ashb")]
+    a = ask(FakeGraph(q5a=[row])).json()
+    labels = {f["label"]: f for f in a["confidence_factors"]}
+    assert labels["Independent sources"]["display"] == "1 of 2 needed"

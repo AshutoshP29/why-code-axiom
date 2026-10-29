@@ -106,8 +106,12 @@ def get_entity(run: Run, repo_id: str, entity_id: str) -> m.Entity | None:
 
 
 def lucene_query(text: str) -> str:
-    """Words and dotted names from free text, OR-ed; drops every Lucene operator character."""
-    words = (w.strip(".") for w in re.findall(r"[\w.]+", text))
+    """Words and dotted names from free text, OR-ed; drops every Lucene operator character.
+
+    Lowercased, so AND, OR, NOT and TO stay plain words rather than operators (the index
+    lowercases too, so nothing is lost).
+    """
+    words = (w.strip(".").lower() for w in re.findall(r"[\w.]+", text))
     return " ".join(w for w in words if w)
 
 

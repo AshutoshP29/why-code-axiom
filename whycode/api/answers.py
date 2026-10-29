@@ -14,6 +14,9 @@ from whycode.graph.queries import Fact as GraphFact
 from whycode.ids import make_id
 
 ASK_SEARCH_LIMIT = 5
+# Below this, a search hit is too weak to say the question is about that item: the other four
+# factors alone reach 0.75, so without this floor any hit on a decided item would be answered.
+MIN_SEARCH_MATCH = 0.5
 NO_MATCH_REASON = (
     "No file, class, function or config key in the graph matches this question, so WhyCode "
     "cannot tell which code it is about and will not guess. Pick an item and ask again."
@@ -21,6 +24,10 @@ NO_MATCH_REASON = (
 MODULE_REASON = (
     "Decisions are recorded on files, classes, functions and config keys, not on modules. "
     "Pick one of the files in this module and ask again."
+)
+WEAK_MATCH_REASON = (
+    "Nothing in the graph clearly matches this question; the closest items below match it only "
+    "weakly, so WhyCode will not assume which code it is about. Pick an item and ask again."
 )
 LOW_CONFIDENCE_REASON = (
     "The graph has a decision for this, but the evidence behind it is too weak to answer. "
@@ -241,6 +248,19 @@ def _refused(base: dict, reason: str, facts: list[m.Fact], url: str) -> m.Refuse
     return m.RefusedAnswer(**base, reason=reason, known_facts=facts, related=[], history_url=url)
 
 
+def _related(hit: m.EntityMatch, repo: str) -> m.RelatedItem:
+    return m.RelatedItem(
+        title=hit.qualified_name,
+        match_score=hit.score,
+        source=m.SourceRef(id=hit.id, label=hit.kind, url=history_url(repo, hit.path)),
+    )
+
+
+def _independent_sources(dv: DecisionView) -> int:
+    """People quoted in the evidence: two comments by the same person are one source."""
+    return len({ev.author or ev.id for ev in dv.evidence})
+
+
 def _fact(f: GraphFact, entity_id: str, url: str) -> m.Fact:
     return m.Fact(
         title=f.title,
@@ -262,6 +282,12 @@ def ask(run: Run, repo: m.Repo, question: str, selected: m.Entity | None) -> m.A
             base = _base(question, None, "search", None, fs, repo, [])
             return _refused(base, NO_MATCH_REASON, [], history_url(repo.id, None))
         top = hits[0]
+        if top.score < MIN_SEARCH_MATCH:
+            fs = factors(Signals(top.score, None))
+            base = _base(question, None, "search", top.score, fs, repo, [])
+            refused = _refused(base, WEAK_MATCH_REASON, [], history_url(repo.id, None))
+            refused.related = [_related(h, repo.id) for h in hits]
+            return refused
         entity = m.Entity(**top.model_dump(exclude={"score"}))
         matched_by, match, match_score = "search", top.score, top.score
 
@@ -291,7 +317,7 @@ def ask(run: Run, repo: m.Repo, question: str, selected: m.Entity | None) -> m.A
         Signals(
             entity_match=match,
             evidence_kind=dv.evidence_kind,
-            source_count=len({ev.id for ev in dv.evidence}),
+            source_count=_independent_sources(dv),
             supersession=supersession,
             citations_verified=all(ev.quote.strip() for ev in dv.evidence),
         )

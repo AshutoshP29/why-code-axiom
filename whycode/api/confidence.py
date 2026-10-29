@@ -29,7 +29,7 @@ Verdict = Literal["answered", "hedged", "refused"]
 class Signals:
     entity_match: float | None  # 0..1; None when nothing matched the question
     evidence_kind: str | None  # EXPLICIT | INFERRED; None when there is no decision
-    source_count: int = 0  # distinct evidence sources behind the decision
+    source_count: int = 0  # distinct people quoted in the evidence behind the decision
     supersession: Supersession = "none"  # resolved: it replaced older ones; pending: refined
     citations_verified: bool = False  # every quote is a verified span of its source
 
