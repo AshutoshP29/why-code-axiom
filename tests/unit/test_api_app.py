@@ -1,18 +1,10 @@
 import pytest
 from neo4j.exceptions import ServiceUnavailable
 
-from tests.api_fakes import CFG, CLS, FILE, FN, REPO, FakeGraph, client
+from tests.api_fakes import CFG, CLS, FILE, FN, REPO, FakeGraph, assert_repo_filtered, client
 from whycode.api import app as app_module
 from whycode.api import reads
 from whycode.config import ConfigError
-
-
-def assert_repo_filtered(graph: FakeGraph):
-    for cypher, params in graph.calls:
-        if "// q:repos" in cypher:
-            continue
-        assert params.get("repo") == REPO
-        assert "$repo" in cypher
 
 
 def test_repos_lists_repo_nodes_with_counts():

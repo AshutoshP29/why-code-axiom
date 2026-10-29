@@ -144,6 +144,15 @@ class FakeGraph:
         return [t.group(1) for c, _ in self.calls if (t := re.match(r"// q:(\w+)", c.lstrip()))]
 
 
+def assert_repo_filtered(graph: FakeGraph) -> None:
+    """Every query but the repo list filters on $repo, with the request's repo."""
+    for cypher, params in graph.calls:
+        if "// q:repos" in cypher:
+            continue
+        assert params.get("repo") == REPO
+        assert "$repo" in cypher
+
+
 def client(graph: FakeGraph, **overrides) -> TestClient:
     app = create_app()
     app.dependency_overrides[get_run] = lambda: graph

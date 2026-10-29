@@ -84,6 +84,18 @@ def list_repos(run: RunDep):
     return reads.repos(run)
 
 
+@router.get("/overview", response_model=m.Overview)
+def get_overview(run: RunDep, repo: RepoDep):
+    require_repo(run, repo)
+    return reads.overview(run, repo)
+
+
+@router.get("/explorer", response_model=m.Explorer)
+def get_explorer(run: RunDep, repo: RepoDep):
+    require_repo(run, repo)
+    return reads.explorer(run, repo)
+
+
 @router.get("/entities/search", response_model=list[m.EntityMatch])
 def search_entities(run: RunDep, repo: RepoDep, q: str = ""):
     require_repo(run, repo)
