@@ -72,6 +72,22 @@ query 5a: the current decision for the code the extraction linked most, with its
 evidence, URLs, people and date. It also shows a refusal for code the PR changed that no decision
 explains: facts only (which commit changed it, who last did), never an invented reason.
 
+### Whole-repository code map and history (no LLM)
+
+```sh
+uv run python -m whycode.ingest.codemap --repo psf/requests --dry-run           # read and count only
+uv run python -m whycode.ingest.codemap --repo psf/requests --target test       # local container
+uv run python -m whycode.ingest.codemap --repo psf/requests --since 2020-01-01  # bounded history
+```
+
+Clones or updates the repository in `cache/repos/<owner>/<name>` (gitignored), parses every
+`.py` file at the default branch's HEAD into File, Class, Function, ConfigKey and Module nodes,
+and reads `git log` into Commit nodes linked by REFERENCES (to the PR in a "(#N)" or "Merge pull
+request #N" subject), REVERTS and MODIFIES `{added, removed}`. File `aliases` hold earlier paths
+(`requests/sessions.py` -> `src/requests/sessions.py`), and history under an old path counts for
+the file it became. Writes are MERGE only and never touch decisions, so a re-run changes no
+count. psf/requests takes about 7 seconds to read: 37 files, 826 code entities, 6,496 commits.
+
 ## Local model (optional)
 
 A model served by [Ollama](https://ollama.com) on this machine can extract too. It costs no API
