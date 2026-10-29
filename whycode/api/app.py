@@ -17,8 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
+from whycode.api import answers, reads
 from whycode.api import models as m
-from whycode.api import reads
 from whycode.config import ConfigError
 from whycode.graph.queries import Run, neo4j_runner
 from whycode.ids import normalize_repo
@@ -105,6 +105,14 @@ def search_entities(run: RunDep, repo: RepoDep, q: str = ""):
 @router.get("/entities", response_model=m.Entity)
 def get_entity(run: RunDep, repo: RepoDep, id: str):
     return require_entity(run, repo, id)
+
+
+@router.post("/ask", response_model=m.Answer)
+def ask(run: RunDep, body: m.AskRequest):
+    repo_id = _normalize(body.repo)
+    repo = require_repo(run, repo_id)
+    selected = require_entity(run, repo_id, body.entity_id) if body.entity_id else None
+    return answers.ask(run, repo, body.question, selected)
 
 
 def _not_implemented():
