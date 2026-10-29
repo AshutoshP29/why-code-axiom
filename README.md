@@ -92,6 +92,24 @@ On an RTX 40-series laptop GPU, Ollama's CUDA 13 backend can crash while loading
 server.log). Setting the environment variable `OLLAMA_LLM_LIBRARY=cuda_v12` before Ollama starts
 makes it use its CUDA 12 backend, which works.
 
+## API
+
+```sh
+uv run uvicorn whycode.api.app:app --reload --port 8000                # Aura, from .env
+WHYCODE_GRAPH_TARGET=test uv run uvicorn whycode.api.app:app --port 8000  # local test Neo4j
+```
+
+`WHYCODE_GRAPH_TARGET` (`aura` by default, or `test`) is read from the process environment, not
+from `.env`. The test target expects the PR 5797 slice in the docker-compose Neo4j:
+`uv run python -m whycode.slice --repo psf/requests --pr 5797 --target test --max-calls 0`.
+
+Every path is under `/api` and matches `frontend/src/api/types.ts`; a unit test fails if the
+models drift from it. CORS allows the Vite dev server (`http://localhost:5173`). `/ask` scores
+confidence from five factors (entity match 0.25, evidence directness 0.25, independent sources
+0.20, supersession resolved 0.15, citation pass 0.15) and answers at 0.70 or more, hedges from
+0.40, and refuses below. Flagged gaps go to the Postgres table `gaps`. `/repos/check`, `POST
+/repos`, `/repos/sync`, `/repos/reingest`, `/ingestion` and `/evaluation` return 501 for now.
+
 ## Tests
 
 ```sh
@@ -114,7 +132,8 @@ whycode/
   code/            tree-sitter parser: files, classes, functions, config keys
   extract/         LLM decision extraction (prompt + pydantic models)
   llm/             llm_client: Gemini/Groq, cache, call budget, retries
-  agent/ api/      later phases
+  api/             FastAPI for the screens (the frontend contract)
+  agent/           later phases
 tests/  unit/  integration/  e2e/  fixtures/
 scripts/
 frontend/          the screens (React + Vite); see frontend/README.md
