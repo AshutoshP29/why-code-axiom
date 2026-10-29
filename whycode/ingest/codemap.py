@@ -9,7 +9,18 @@ file at the default branch's HEAD, and reads `git log` for commits, renames and 
 import subprocess
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+
+from whycode.code.entities import EntityKind, parse_file
+from whycode.graph.build import GraphBatch
+from whycode.ids import make_id, normalize_repo
+
+LABEL_BY_KIND = {
+    EntityKind.FILE: "File",
+    EntityKind.CLASS: "Class",
+    EntityKind.FUNCTION: "Function",
+    EntityKind.CONFIG_KEY: "ConfigKey",
+}
 
 _RECORD, _FIELD = "\x1e", "\x1f"
 
@@ -118,3 +129,82 @@ def read_history(root: Path, since: str | None = None) -> list[GitCommit]:
             )
         )
     return commits
+
+
+def module_names(paths: list[str]) -> dict[str, str]:
+    """Package directory -> dotted module name, for every directory with an __init__.py.
+
+    The name starts at the topmost directory of an unbroken chain of packages, so
+    src/requests/ is "requests" (src/ has no __init__.py) and pkg/sub/ is "pkg.sub".
+    """
+    dirs = {
+        PurePosixPath(p).parent.as_posix() for p in paths if PurePosixPath(p).name == "__init__.py"
+    }
+    dirs.discard(".")
+    names = {}
+    for d in dirs:
+        parts = d.split("/")
+        start = len(parts) - 1
+        while start > 0 and "/".join(parts[:start]) in dirs:
+            start -= 1
+        names[d] = ".".join(parts[start:])
+    return names
+
+
+def build_code_map(repo: str, root: Path, head_sha: str | None = None) -> GraphBatch:
+    """File, Class, Function, ConfigKey and Module nodes for every .py file at HEAD.
+
+    File CONTAINS its classes, functions and config keys, a class its methods (as the PR graph
+    does); Module CONTAINS the files directly in its package. A config key named in several
+    files is one node (ids are repo-wide); it keeps the properties from the first file, in
+    path order, and every file CONTAINS it.
+    """
+    repo = normalize_repo(repo)
+    b = GraphBatch(repo)
+    owner, name = repo.split("/")
+    b.node(
+        "Repo",
+        repo,
+        owner=owner,
+        name=name,
+        url=f"https://github.com/{repo}",
+        last_commit_sha=head_sha,
+    )
+    files = python_files(root)
+    aliases = rename_aliases(root)
+    modules = module_names(files)
+    for module in modules.values():
+        b.node("Module", make_id(repo, "mod", module), name=module)
+
+    for path in files:
+        parsed = parse_file(repo, path, (root / path).read_bytes())
+        file_id = parsed.entities[0].id
+        earlier = aliases.get(path, [])
+        b.node(
+            "File",
+            file_id,
+            path=path,
+            name=PurePosixPath(path).name,
+            aliases=earlier,
+            aliases_text=" ".join(earlier),
+        )
+        package = modules.get(PurePosixPath(path).parent.as_posix())
+        if package:
+            b.rel("CONTAINS", ("Module", make_id(repo, "mod", package)), ("File", file_id))
+        labels = {e.id: LABEL_BY_KIND[e.kind] for e in parsed.entities}
+        for e in parsed.entities[1:]:
+            ref = (LABEL_BY_KIND[e.kind], e.id)
+            if e.id not in b.nodes.get(ref[0], {}):
+                b.node(
+                    *ref,
+                    name=e.name,
+                    qualified_name=e.qualified_name,
+                    path=e.path,
+                    start_line=e.start_line,
+                    end_line=e.end_line,
+                    value=e.value,
+                    aliases_text="",
+                )
+            if e.parent_id in labels:
+                b.rel("CONTAINS", (labels[e.parent_id], e.parent_id), ref)
+    return b

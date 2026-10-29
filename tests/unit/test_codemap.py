@@ -63,3 +63,114 @@ def test_clone_then_update(tiny, tmp_path):
 def test_git_errors_are_short_and_typed(tmp_path):
     with pytest.raises(codemap.GitError, match="git log failed"):
         codemap.git(tmp_path, "log")
+
+
+R = "test/tiny"
+CORE = f"{R}#file:pkg/core.py"
+
+
+@pytest.fixture(scope="module")
+def code(tiny):
+    root, shas = tiny
+    return codemap.build_code_map(R, root, shas["c7"])
+
+
+def rels(batch, type_):
+    return {
+        (a_label, a, b_label, b)
+        for (t, a_label, b_label), pairs in batch.rels.items()
+        if t == type_
+        for a, b in pairs
+    }
+
+
+def test_repo_node_records_head(code, tiny):
+    _, shas = tiny
+    assert code.nodes["Repo"][R] == {
+        "repo": R,
+        "owner": "test",
+        "name": "tiny",
+        "url": "https://github.com/test/tiny",
+        "last_commit_sha": shas["c7"],
+    }
+
+
+def test_files_with_aliases(code):
+    files = code.nodes["File"]
+    assert sorted(files) == [
+        f"{R}#file:pkg/__init__.py",
+        CORE,
+        f"{R}#file:pkg/sub/__init__.py",
+        f"{R}#file:pkg/sub/util.py",
+        f"{R}#file:scripts/tool.py",
+    ]
+    assert files[CORE] == {
+        "repo": R,
+        "path": "pkg/core.py",
+        "name": "core.py",
+        "aliases": ["pkg/old_name.py"],
+        "aliases_text": "pkg/old_name.py",
+    }
+    assert files[f"{R}#file:scripts/tool.py"]["aliases"] == []
+
+
+def test_modules_contain_their_files(code):
+    assert sorted(code.nodes["Module"]) == [f"{R}#mod:pkg", f"{R}#mod:pkg.sub"]
+    assert rels(code, "CONTAINS") >= {
+        ("Module", f"{R}#mod:pkg", "File", CORE),
+        ("Module", f"{R}#mod:pkg", "File", f"{R}#file:pkg/__init__.py"),
+        ("Module", f"{R}#mod:pkg.sub", "File", f"{R}#file:pkg/sub/util.py"),
+    }
+    assert not any(b == f"{R}#file:scripts/tool.py" for _, _, _, b in rels(code, "CONTAINS"))
+
+
+def test_code_entities_and_containment(code):
+    engine = f"{R}#cls:pkg/core.py::Engine"
+    run = f"{R}#fn:pkg/core.py::Engine.run"
+    assert code.nodes["Class"][engine]["start_line"] == 8  # MAX_SIZE, f, then the class
+    assert code.nodes["Function"][run]["qualified_name"] == "Engine.run"
+    assert code.nodes["ConfigKey"][f"{R}#cfg:MAX_SIZE"]["value"] == "10"
+    assert code.nodes["ConfigKey"][f"{R}#cfg:limit"]["value"] == "MAX_SIZE"
+    assert rels(code, "CONTAINS") >= {
+        ("File", CORE, "Class", engine),
+        ("Class", engine, "Function", run),
+        ("File", CORE, "Function", f"{R}#fn:pkg/core.py::f"),
+        ("File", CORE, "ConfigKey", f"{R}#cfg:MAX_SIZE"),
+        ("Function", run, "ConfigKey", f"{R}#cfg:limit"),
+    }
+
+
+@pytest.mark.parametrize(
+    ("paths", "expected"),
+    [
+        (["src/requests/__init__.py", "src/requests/sessions.py"], {"src/requests": "requests"}),
+        (
+            ["a/__init__.py", "a/b/__init__.py", "a/b/c/__init__.py"],
+            {"a": "a", "a/b": "a.b", "a/b/c": "a.b.c"},
+        ),
+        (["a/b/__init__.py"], {"a/b": "b"}),  # a/ is not a package
+        (["__init__.py", "x.py"], {}),  # the repo root is never a module
+    ],
+)
+def test_module_names(paths, expected):
+    assert codemap.module_names(paths) == expected
+
+
+def test_config_key_in_two_files_keeps_the_first(tmp_path):
+    from tests.gitrepo import _git, _write
+
+    root = tmp_path / "r"
+    root.mkdir()
+    _git(root, "init", "-q", "-b", "main")
+    _write(root, "a.py", "TIMEOUT = 1\n")
+    _write(root, "b.py", "\n\nTIMEOUT = 2\n")
+    _git(root, "add", "-A")
+    _git(root, "commit", "-q", "-m", "two files")
+    b = codemap.build_code_map(R, root)
+    assert b.nodes["ConfigKey"][f"{R}#cfg:TIMEOUT"]["path"] == "a.py"
+    assert b.nodes["ConfigKey"][f"{R}#cfg:TIMEOUT"]["value"] == "1"
+    assert {(a, x) for _, a, _, x in rels(b, "CONTAINS")} == {
+        (f"{R}#file:a.py", f"{R}#cfg:TIMEOUT"),
+        (f"{R}#file:b.py", f"{R}#cfg:TIMEOUT"),
+    }
+    assert "last_commit_sha" not in b.nodes["Repo"][R]
