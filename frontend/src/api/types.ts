@@ -97,10 +97,12 @@ export interface Decision {
   id: string
   summary: string
   rationale: string
+  alternatives: string[] // options considered and not chosen; [] when none were recorded
   decided_at: string // ISO date
   status: DecisionStatus // status today, not as of any earlier date
   evidence_kind: 'EXPLICIT' | 'INFERRED'
   proposed_by: string | null // login
+  approved_by: string[] // logins of everyone who approved it: who merged it and each approving reviewer
   reviewed_by: string | null
   source: SourceRef
 }

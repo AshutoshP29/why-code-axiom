@@ -299,14 +299,16 @@ const person = (login: string, role: string, active: boolean, last_seen: string)
 
 function decision(
   key: string,
-  fields: Omit<Decision, 'id' | 'evidence_kind' | 'reviewed_by'> &
-    Partial<Pick<Decision, 'evidence_kind' | 'reviewed_by'>>,
+  fields: Omit<Decision, 'id' | 'evidence_kind' | 'reviewed_by' | 'alternatives' | 'approved_by'> &
+    Partial<Pick<Decision, 'evidence_kind' | 'reviewed_by' | 'alternatives' | 'approved_by'>>,
   supersedes: LineageDecision['supersedes'] = [],
 ): LineageDecision {
   return {
     id: id('dec', key),
     evidence_kind: 'EXPLICIT',
     reviewed_by: null,
+    alternatives: [], // none recorded
+    approved_by: [],
     ...fields,
     supersedes,
   }
@@ -333,6 +335,8 @@ const RA2 = decision(
     proposed_by: 'maintainer_a',
     reviewed_by: 'maintainer_b',
     source: pr(1565, 'rebuild_auth'),
+    alternatives: ['Strip the header on every redirect, even to the same host', 'Keep the header and leave it to the caller'],
+    approved_by: ['maintainer_b', 'maintainer_c'],
   },
   [{ decision_id: RA1.id, kind: 'replaces' }],
 )
@@ -355,6 +359,7 @@ const MR2 = decision(
     status: 'PARTIAL',
     proposed_by: 'maintainer_b',
     source: pr(1830, 'max_retries backoff'),
+    approved_by: ['maintainer_a'],
   },
   [{ decision_id: MR1.id, kind: 'replaces' }],
 )
@@ -369,6 +374,8 @@ const MR3 = decision(
     proposed_by: 'maintainer_c',
     reviewed_by: 'maintainer_b',
     source: pr(5012, 'max_retries Retry'),
+    alternatives: ['Retry only idempotent methods by default', 'Keep 3 retries and document the risk'],
+    approved_by: ['maintainer_b'],
   },
   [{ decision_id: MR2.id, kind: 'refines' }],
 )
@@ -382,6 +389,8 @@ const V1 = decision('v1', {
   proposed_by: 'maintainer_a',
   reviewed_by: 'maintainer_c',
   source: pr(300, 'verify certificates default'),
+  alternatives: ['Warn about unverified certificates instead of failing'],
+  approved_by: ['maintainer_c'],
 })
 
 // The hedged sample: the reason is only inferred, from one commit message and nothing else.
