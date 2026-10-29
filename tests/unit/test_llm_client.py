@@ -198,12 +198,37 @@ def test_waits_as_long_as_the_provider_asks():
     assert slept == [45.0]
 
 
-def test_provider_wait_is_capped():
+def test_rate_limit_longer_than_max_wait_switches_the_provider_off_for_that_long():
+    now = [0.0]
+    gemini = FakeProvider(
+        "gemini", "g", [StatusError(503), '{"a": 1}', StatusError(503), '{"a": 2}']
+    )
+    groq = FakeProvider("groq", "q", [rate_limited(900), '{"back": 1}'])
+    slept = []
+    client = LLMClient(
+        [gemini, groq],
+        MemoryLLMCache(),
+        Budget(10),
+        backoff_s=5,
+        max_wait_s=120,
+        sleep=slept.append,
+        clock=lambda: now[0],
+    )
+    assert ask(client, "1").provider == "gemini"
+    assert slept == [5.0]  # the normal backoff, not 900s and not the 120s cap
+    assert client.tripped == {"groq"}
+    assert ask(client, "2").provider == "gemini"
+    assert len(groq.calls) == 1  # no call spent on groq while it is off
+    now[0] = 901.0
+    assert client.tripped == set()
+
+
+def test_rate_limit_within_max_wait_keeps_the_provider_on():
     client, _, _, slept = make(
-        [StatusError(503), '{"ok": 1}'], [rate_limited(900)], backoff_s=5, max_wait_s=120
+        [StatusError(503), '{"ok": 1}'], [rate_limited(100)], backoff_s=5, max_wait_s=120
     )
     ask(client)
-    assert slept == [120.0]
+    assert slept == [100.0] and client.tripped == set()
 
 
 def test_failure_message_includes_short_provider_text():

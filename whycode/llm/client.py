@@ -8,7 +8,9 @@
 - A reply that is cut off or is not valid JSON counts as a failed attempt: it is never cached,
   and the next provider is tried.
 - Circuit breaker: a provider that is unavailable or times out trip_after times in a row is
-  skipped for the rest of the run, so a dead provider stops costing a call per request.
+  skipped for cooldown_s, so a dead provider stops costing a call per request.
+- A rate limit that asks for a longer wait than max_wait_s (a daily quota, say) switches that
+  provider off for as long as it asked, instead of retrying it and spending the budget.
 - If every provider failed for a transient reason (rate limit, overload, timeout, cut-off reply),
   the whole chain is retried after a backoff, up to max_rounds.
 - dry_run returns what would be sent and makes no call.
@@ -136,7 +138,7 @@ class LLMClient:
         self._sleep, self._redact = sleep, redact
         self.trip_after, self.cooldown_s, self._clock = trip_after, cooldown_s, clock
         self._down_streak: dict[str, int] = {}
-        self._tripped_at: dict[str, float] = {}
+        self._off_until: dict[str, float] = {}
         self.api_calls = 0
         self.cache_hits = 0
 
@@ -224,7 +226,11 @@ class LLMClient:
                     reason = classify_error(exc)
                     reasons.append(reason)
                     all_reasons.append(reason)
-                    hints.append(retry_after_seconds(exc) or 0.0)
+                    hint = retry_after_seconds(exc) or 0.0
+                    if reason == "rate_limit" and hint > self.max_wait_s:
+                        self._switch_off(p.name, hint, f"rate limited for {hint:.0f}s")
+                        hint = 0.0  # it is off now; do not wait for it
+                    hints.append(hint)
                     msg = self._redact(
                         f"{p.name}/{p.model}: {reason} ({type(exc).__name__}: {_short(exc)})"
                     )
@@ -263,9 +269,13 @@ class LLMClient:
 
     @property
     def tripped(self) -> set[str]:
-        """Providers switched off right now. Each comes back after cooldown_s for another try."""
+        """Providers switched off right now. Each comes back when its time is up for another try."""
         now = self._clock()
-        return {n for n, at in self._tripped_at.items() if now - at < self.cooldown_s}
+        return {n for n, until in self._off_until.items() if now < until}
+
+    def _switch_off(self, name: str, seconds: float, why: str) -> None:
+        self._off_until[name] = self._clock() + seconds
+        log.warning("%s %s; skipping it for %.0f minutes", name, why, seconds / 60)
 
     def all_switched_off(self) -> bool:
         return {p.name for p in self.providers} <= self.tripped
@@ -276,15 +286,9 @@ class LLMClient:
             return
         self._down_streak[name] = self._down_streak.get(name, 0) + 1
         if self._down_streak[name] >= self.trip_after and name not in self.tripped:
-            self._tripped_at[name] = self._clock()
+            self._switch_off(name, self.cooldown_s, f"unavailable {self.trip_after} times in a row")
             # After the cool-down it gets one try: a single failure switches it off again.
             self._down_streak[name] = self.trip_after - 1
-            log.warning(
-                "%s unavailable %d times in a row; skipping it for %.0f minutes",
-                name,
-                self.trip_after,
-                self.cooldown_s / 60,
-            )
 
 
 PROVIDER_NAMES = ("gemini", "groq", "local")
