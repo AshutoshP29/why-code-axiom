@@ -81,6 +81,42 @@ describe('Why Workspace', () => {
     expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is Session.resolve_redirects like this?`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
   })
+
+  it('lists the options that were considered and not chosen', async () => {
+    renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    const options = await screen.findByRole('list', { name: 'Also considered' })
+    expect(within(options).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Strip the header on every redirect, even to the same host',
+      'Keep the header and leave it to the caller',
+    ])
+  })
+
+  it('names everyone who approved the decision next to who proposed it', async () => {
+    renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    expect(await screen.findByText('Proposed by @maintainer_a')).toBeInTheDocument()
+    expect(screen.getByText('Approved by @maintainer_b, @maintainer_c')).toBeInTheDocument()
+    // maintainer_b also reviewed it, and is named once, as an approver.
+    expect(screen.queryByText('Reviewed by @maintainer_b')).not.toBeInTheDocument()
+  })
+
+  it('still names a reviewer who did not approve', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const ask = api.ask
+    api.ask = async (...args) => {
+      const answer = await ask(...args)
+      if (answer.verdict === 'refused') return answer
+      return { ...answer, decision: { ...answer.decision, reviewed_by: 'reviewer_x', approved_by: [] } }
+    }
+    renderApp(whyPath(E.rebuildAuth.id, 'q'), { api })
+    expect(await screen.findByText('Reviewed by @reviewer_x')).toBeInTheDocument()
+    expect(screen.queryByText(/^Approved by/)).not.toBeInTheDocument()
+  })
+
+  it('leaves out "Also considered" when no other option was recorded', async () => {
+    renderApp(whyPath(E.timeout.id, 'q'))
+    expect(await screen.findByText('Low confidence')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Also considered' })).not.toBeInTheDocument()
+  })
 })
 
 describe('Hedged answer', () => {

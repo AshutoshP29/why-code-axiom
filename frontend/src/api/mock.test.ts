@@ -119,4 +119,19 @@ describe('mock API', () => {
     const repo = (await api.listRepos()).find((r) => r.id === 'someone/project')
     expect(repo).toMatchObject({ status: 'READY', partial: false, progress_pct: 100 })
   })
+
+  it('sends alternatives and every approver with each decision, as lists', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.rebuildAuth.id, 'why?')
+    if (answer.verdict !== 'answered') throw new Error(`expected an answer, got ${answer.verdict}`)
+    expect(answer.decision.alternatives).toHaveLength(2)
+    expect(answer.decision.approved_by).toEqual(['maintainer_b', 'maintainer_c'])
+    // An older, replaced decision with nothing recorded still sends empty lists, never a missing field.
+    expect(answer.superseded[0].decision).toMatchObject({ alternatives: [], approved_by: [] })
+
+    const lineage = await api.getLineage(SAMPLE_REPO, E.maxRetries.id, null)
+    for (const d of lineage.decisions) {
+      expect(Array.isArray(d.alternatives) && Array.isArray(d.approved_by)).toBe(true)
+    }
+  })
 })

@@ -137,6 +137,12 @@ Points worth knowing when building the backend:
   the weak ones; the screen lists them in the warning and first under "Why only 55%?".
 - **The LLM only words `answer_text`.** Everything else on the Why Workspace comes from the graph:
   the decision, its `source`, each evidence step's `source.url`, people, and confidence factors.
+- **Every decision has `alternatives` and `approved_by`**, both lists and both `[]` when nothing
+  was recorded, never missing. `alternatives` are the options considered and not chosen; the
+  screen lists them under the decision as "Also considered". `approved_by` holds the logins of
+  everyone who approved it, which is who merged the PR and each approving reviewer, as
+  `whycode/graph/build.py` records them; the screen shows them next to "Proposed by".
+  `reviewed_by` is unchanged. If that person is also an approver, the screen names them once.
 - **Lineage time travel:** `/lineage?as_of=2016-12-31` returns only decisions and commits on or
   before that date. Each decision lists the older decisions it `supersedes` with a kind
   (`reverses`, `replaces`, `refines`). The page works out each card's status *as of that date*
