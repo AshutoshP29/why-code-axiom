@@ -259,3 +259,92 @@ def explorer(run: Run, repo_id: str) -> m.Explorer:
     return m.Explorer(
         root=_root([i.entity.path for i in files if i.entity.path]), files=files, config_keys=config
     )
+
+
+# ---------- health ----------
+
+Q_HEALTH_COUNTS = """// q:health_counts
+MATCH (n {repo: $repo}) UNWIND labels(n) AS label
+RETURN label, count(*) AS n
+"""
+Q_HEALTH_LINKS = """// q:health_links
+RETURN COUNT { MATCH ({repo: $repo})-[:MODIFIES|REFERENCES|CLOSES|REVERTS]->({repo: $repo}) }
+         AS links,
+       COUNT { MATCH (d:Decision {repo: $repo}) WHERE d.status = 'SUPERSEDED' } AS superseded
+"""
+EVAL_METRICS = (
+    "Citation accuracy",
+    "Supersession detected correctly",
+    "Correct refusals",
+    "Answers with evidence links",
+)
+_STAGE_DETAIL = {
+    "fetch": "pull requests, commits, issues",
+    "parse": "files, classes, functions, config keys",
+    "link": "commit to code, PR to issue",
+    "extract": "with evidence spans",
+    "supersession": "reverts, later overrides",
+}
+
+
+def stages(r: m.Repo, headlines: dict[str, str]) -> list[m.StageProgress]:
+    """Stages before the repo's current one are done; the current one is done when the repo is
+    READY, running while it ingests, error when it failed; later ones are queued."""
+    if r.stage is not None:
+        current = m.STAGES.index(r.stage)
+    else:
+        current = len(m.STAGES) - 1 if r.status == "READY" else -1
+    out = []
+    for i, stage in enumerate(m.STAGES):
+        if i < current or (i == current and r.status == "READY"):
+            state, pct = "done", 100
+        elif i == current:
+            state, pct = ("error" if r.status == "ERROR" else "running"), r.progress_pct
+        else:
+            state, pct = "queued", 0
+        out.append(
+            m.StageProgress(
+                stage=stage,
+                state=state,
+                progress_pct=pct,
+                headline=headlines[stage],
+                detail=_STAGE_DETAIL[stage],
+            )
+        )
+    return out
+
+
+def health(run: Run, r: m.Repo, gap_queue: list[m.Gap]) -> m.Health:
+    params = {"repo": r.id}
+    by_label = {row["label"]: row["n"] for row in run(Q_HEALTH_COUNTS, params)}
+    links = run(Q_HEALTH_LINKS, params)[0]
+    entities = sum(by_label.get(label, 0) for label in ("File", "Class", "Function", "ConfigKey"))
+    counts = m.HealthCounts(
+        commits=by_label.get("Commit", 0),
+        issues=by_label.get("Issue", 0),
+        entities=entities,
+        pull_requests=by_label.get("PullRequest", 0),
+        decisions=by_label.get("Decision", 0),
+        people=by_label.get("Person", 0),
+    )
+    headlines = {
+        "fetch": f"{counts.pull_requests:,} PRs",
+        "parse": f"{entities:,} entities",
+        "link": f"{links['links']:,} links",
+        "extract": f"{counts.decisions:,} decisions",
+        "supersession": f"{links['superseded']:,} found",
+    }
+    return m.Health(
+        last_ingest_at=r.last_synced_at,
+        stages=stages(r, headlines),
+        counts=counts,
+        gap_queue=gap_queue,
+        evaluation=m.EvaluationSummary(
+            question_count=0,
+            measured=False,
+            rows=[
+                m.EvalRow(metric=name, llm_only=None, vector_rag=None, whycode=None)
+                for name in EVAL_METRICS
+            ],
+        ),
+    )

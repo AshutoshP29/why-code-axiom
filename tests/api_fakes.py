@@ -153,9 +153,10 @@ def assert_repo_filtered(graph: FakeGraph) -> None:
         assert "$repo" in cypher
 
 
-def client(graph: FakeGraph, **overrides) -> TestClient:
+def client(graph: FakeGraph, overrides: dict | None = None) -> TestClient:
+    """A TestClient on a fresh app whose graph is `graph`; `overrides` maps other
+    dependencies (e.g. get_gaps) to stand-ins."""
     app = create_app()
     app.dependency_overrides[get_run] = lambda: graph
-    for dep, value in overrides.items():
-        app.dependency_overrides[dep] = value
+    app.dependency_overrides.update(overrides or {})
     return TestClient(app)

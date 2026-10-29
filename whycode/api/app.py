@@ -13,6 +13,7 @@ from datetime import date
 from functools import lru_cache
 from typing import Annotated
 
+import psycopg
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,6 +21,7 @@ from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
 from whycode.api import answers, lineage, reads
 from whycode.api import models as m
+from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
 from whycode.graph.queries import Run, neo4j_runner
 from whycode.ids import normalize_repo
@@ -27,6 +29,7 @@ from whycode.ids import normalize_repo
 TARGET_ENV = "WHYCODE_GRAPH_TARGET"
 CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 NOT_IMPLEMENTED = {"detail": "not implemented yet"}
+TEST_POSTGRES_DSN = "postgresql://whycode:whycode_dev_only@127.0.0.1:5433/whycode"  # dev only
 
 
 @lru_cache(maxsize=1)
@@ -48,6 +51,29 @@ def _graph():
 def get_run() -> Run:
     driver, database = _graph()
     return neo4j_runner(driver, database)
+
+
+@lru_cache(maxsize=1)
+def _gap_store() -> GapStore:
+    if os.environ.get(TARGET_ENV, "aura").strip().lower() == "test":
+        dsn = os.environ.get("WHYCODE_TEST_POSTGRES_DSN", TEST_POSTGRES_DSN)
+    else:
+        from whycode.config import get_settings
+
+        dsn = get_settings().postgres_dsn.get_secret_value()
+    return GapStore.connect(dsn)
+
+
+def get_gaps() -> GapStore:
+    return _gap_store()
+
+
+def get_gaps_or_none() -> GapStore | None:
+    """For screens that still work without Postgres: no gap store means an empty gap queue."""
+    try:
+        return _gap_store()
+    except (psycopg.Error, ConfigError):
+        return None
 
 
 def repo_param(repo: Annotated[str, Query(description="owner/name")]) -> str:
@@ -73,6 +99,22 @@ def require_entity(run: Run, repo: str, entity_id: str) -> m.Entity:
     if found is None:
         raise HTTPException(404, f"{entity_id} is not in the graph for {repo}")
     return found
+
+
+def gap_queue(run: Run, gaps: GapStore | None, repo: str, entity_id: str | None = None):
+    out = []
+    for s in gaps.summaries(repo, entity_id) if gaps else []:
+        entity = reads.get_entity(run, repo, s.entity_id)
+        if entity is not None:  # an entity that left the graph drops out of the queue
+            out.append(
+                m.Gap(
+                    entity=entity,
+                    flags=s.flags,
+                    last_question=s.last_question,
+                    last_flagged_at=s.last_flagged_at,
+                )
+            )
+    return out
 
 
 RunDep = Annotated[Run, Depends(get_run)]
@@ -122,6 +164,23 @@ def get_lineage(run: RunDep, repo: RepoDep, entity_id: str, as_of: date | None =
     return lineage.lineage(run, repo, entity, as_of)
 
 
+@router.get("/health", response_model=m.Health)
+def get_health(
+    run: RunDep, repo: RepoDep, gaps: Annotated[GapStore | None, Depends(get_gaps_or_none)]
+):
+    found = require_repo(run, repo)
+    return reads.health(run, found, gap_queue(run, gaps, repo))
+
+
+@router.post("/gaps", response_model=m.Gap)
+def flag_gap(run: RunDep, body: m.GapRequest, gaps: Annotated[GapStore, Depends(get_gaps)]):
+    repo = _normalize(body.repo)
+    require_repo(run, repo)
+    require_entity(run, repo, body.entity_id)
+    gaps.add(repo, body.entity_id, body.question)
+    return gap_queue(run, gaps, repo, body.entity_id)[0]
+
+
 def _not_implemented():
     return JSONResponse(NOT_IMPLEMENTED, status_code=501)
 
@@ -143,6 +202,9 @@ async def _lifespan(_app: FastAPI):
     if _graph.cache_info().currsize:
         _graph()[0].close()
         _graph.cache_clear()
+    if _gap_store.cache_info().currsize:
+        _gap_store().close()
+        _gap_store.cache_clear()
 
 
 def create_app() -> FastAPI:
@@ -164,6 +226,12 @@ def create_app() -> FastAPI:
                 "instance, resume it in the Aura console."
             },
             status_code=503,
+        )
+
+    @app.exception_handler(psycopg.OperationalError)
+    async def _postgres_down(_request: Request, _exc: Exception):
+        return JSONResponse(
+            {"detail": "The gap store (Postgres) is not reachable."}, status_code=503
         )
 
     @app.exception_handler(ConfigError)
