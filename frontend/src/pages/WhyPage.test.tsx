@@ -81,6 +81,21 @@ describe('Why Workspace', () => {
     expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is Session.resolve_redirects like this?`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
   })
+
+  it('lists the options that were considered and not chosen', async () => {
+    renderApp(whyPath(E.rebuildAuth.id, 'q'))
+    const options = await screen.findByRole('list', { name: 'Also considered' })
+    expect(within(options).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+      'Strip the header on every redirect, even to the same host',
+      'Keep the header and leave it to the caller',
+    ])
+  })
+
+  it('leaves out "Also considered" when no other option was recorded', async () => {
+    renderApp(whyPath(E.timeout.id, 'q'))
+    expect(await screen.findByText('Low confidence')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Also considered' })).not.toBeInTheDocument()
+  })
 })
 
 describe('Hedged answer', () => {

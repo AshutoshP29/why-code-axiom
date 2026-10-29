@@ -80,6 +80,18 @@ export function AnsweredView({
               {d.source.label}
             </a>
           </p>
+          {d.alternatives.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <SectionLabel>
+                <span id="alternatives-heading">Also considered</span>
+              </SectionLabel>
+              <ul aria-labelledby="alternatives-heading" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+                {d.alternatives.map((option) => (
+                  <li key={option}>{option}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
 
         {answer.superseded.map((note) => (
