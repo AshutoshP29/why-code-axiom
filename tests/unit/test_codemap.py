@@ -174,3 +174,92 @@ def test_config_key_in_two_files_keeps_the_first(tmp_path):
         (f"{R}#file:b.py", f"{R}#cfg:TIMEOUT"),
     }
     assert "last_commit_sha" not in b.nodes["Repo"][R]
+
+
+@pytest.fixture(scope="module")
+def full(tiny):
+    root, shas = tiny
+    b = codemap.build_code_map(R, root, shas["c7"])
+    stats = codemap.add_history(b, codemap.read_history(root))
+    return b, stats, shas
+
+
+def cid(sha):
+    return f"{R}#commit:{sha}"
+
+
+def test_commit_nodes(full):
+    b, stats, shas = full
+    assert stats.commits == len(b.nodes["Commit"]) == 7
+    c3 = b.nodes["Commit"][cid(shas["c3"])]
+    assert (c3["sha"], c3["message"], c3["url"]) == (
+        shas["c3"],
+        "Add Engine (#12)",
+        f"https://github.com/{R}/commit/{shas['c3']}",
+    )
+    assert c3["date"] == datetime(2024, 1, 3, 12, tzinfo=UTC)
+
+
+def test_references_from_squash_and_merge_subjects(full):
+    b, stats, shas = full
+    assert rels(b, "REFERENCES") == {
+        ("Commit", cid(shas["c3"]), "PullRequest", f"{R}#pr:12"),
+        ("Commit", cid(shas["c7"]), "PullRequest", f"{R}#pr:7"),
+    }
+    assert b.nodes["PullRequest"][f"{R}#pr:7"] == {
+        "repo": R,
+        "number": 7,
+        "url": f"https://github.com/{R}/pull/7",
+    }
+    assert stats.references == 2
+
+
+def test_revert_links_to_the_reverted_commit(full):
+    b, stats, shas = full
+    assert rels(b, "REVERTS") == {("Commit", cid(shas["c5"]), "Commit", cid(shas["c4"]))}
+    assert stats.reverts == 1
+
+
+def test_modifies_current_files_with_line_counts(full):
+    b, stats, shas = full
+    core = f"{R}#file:pkg/core.py"
+    pairs = {
+        (a, x): props
+        for (t, _, _), ps in b.rels.items()
+        if t == "MODIFIES"
+        for (a, x), props in ps.items()
+    }
+    assert pairs[(cid(shas["c1"]), core)] == {"added": 5, "removed": 0}  # as pkg/old_name.py
+    assert pairs[(cid(shas["c2"]), core)] == {"added": 5, "removed": 0}  # the rename, once
+    assert pairs[(cid(shas["c3"]), core)] == {"added": 5, "removed": 0}
+    assert pairs[(cid(shas["c4"]), core)] == {"added": 1, "removed": 1}
+    assert pairs[(cid(shas["c6"]), f"{R}#file:pkg/sub/util.py")] == {"added": 2, "removed": 0}
+    assert not any(a == cid(shas["c7"]) for a, _ in pairs)  # merges list no files
+    assert not any(x.endswith("README.md") for _, x in pairs)  # only .py files are nodes
+    assert stats.modifies == len(pairs)
+
+
+def test_history_window_links_only_commits_it_read(full, tiny):
+    root, shas = tiny
+    b = codemap.build_code_map(R, root)
+    recent = codemap.read_history(root, since="2024-01-05T00:00:00+00:00")
+    stats = codemap.add_history(b, recent)
+    assert stats.commits == 3
+    assert stats.reverts == 0  # c4 is outside the window
+    assert rels(b, "REVERTS") == set()
+
+
+def commit(sha, message, numstat=()):
+    return codemap.GitCommit(sha, (), datetime(2024, 1, 1, tzinfo=UTC), message, tuple(numstat))
+
+
+def test_revert_by_short_sha_and_by_subject():
+    older = [commit("abcdef1234", "Do it"), commit("abd0000000", "Other")]
+    short = commit("f" * 10, 'Revert "Do it"\n\nThis reverts commit abcdef1.')
+    assert codemap._revert_targets(short, older, R) == ["abcdef1234"]
+    ambiguous = commit("e" * 10, "This reverts commit ab.")  # too short to parse as a sha
+    assert codemap._revert_targets(ambiguous, older, R) == []
+    by_subject = commit("d" * 10, 'Revert "Other"')
+    assert codemap._revert_targets(by_subject, older, R) == ["abd0000000"]
+    not_revert = commit("c" * 10, "Plain change")
+    assert codemap._revert_targets(not_revert, older, R) == []

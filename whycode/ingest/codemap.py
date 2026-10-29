@@ -14,6 +14,7 @@ from pathlib import Path, PurePosixPath
 from whycode.code.entities import EntityKind, parse_file
 from whycode.graph.build import GraphBatch
 from whycode.ids import make_id, normalize_repo
+from whycode.ingest.links import merge_pr_number, parse_revert, subject_pr_numbers
 
 LABEL_BY_KIND = {
     EntityKind.FILE: "File",
@@ -208,3 +209,88 @@ def build_code_map(repo: str, root: Path, head_sha: str | None = None) -> GraphB
             if e.parent_id in labels:
                 b.rel("CONTAINS", (labels[e.parent_id], e.parent_id), ref)
     return b
+
+
+@dataclass(frozen=True)
+class HistoryStats:
+    commits: int
+    references: int
+    reverts: int
+    modifies: int
+
+
+def _modified_files(c: GitCommit, files: dict[str, str], current: dict[str, str]):
+    """(file id, added, removed) for each file at HEAD this commit changed.
+
+    A path that no longer exists is followed to its current name through the File aliases.
+    When a commit touches both a file's old and new path (the rename itself), only the new
+    path's counts are kept, so a pure rename is not counted as changed lines twice.
+    """
+    out: dict[str, tuple[int, int]] = {}
+    for added, removed, path in c.numstat:
+        if path in files:
+            out[files[path]] = (added, removed)
+    for added, removed, path in c.numstat:
+        head_path = current.get(path)
+        if path not in files and head_path in files and files[head_path] not in out:
+            out[files[head_path]] = (added, removed)
+    return out
+
+
+def _revert_targets(c: GitCommit, older: list[GitCommit], repo: str) -> list[str]:
+    """Shas `c` reverts among the commits read: by "This reverts commit <sha>" (a unique
+    prefix is enough), else by the newest older commit whose subject is the quoted one."""
+    revert = parse_revert(c.message, repo)
+    if revert is None:
+        return []
+    targets = []
+    for short in revert.shas:
+        matches = [o.sha for o in older if o.sha.startswith(short)]
+        if len(matches) == 1:
+            targets.append(matches[0])
+    if not targets and revert.subject:
+        for o in older:
+            if o.message.splitlines()[0] == revert.subject:
+                targets.append(o.sha)
+                break
+    return targets
+
+
+def add_history(b: GraphBatch, commits: list[GitCommit]) -> HistoryStats:
+    """Commit nodes and their REFERENCES, REVERTS and MODIFIES edges, from newest-first commits.
+
+    REFERENCES goes to the PullRequest a "(#N)" squash subject or a "Merge pull request #N"
+    merge names (a stub node with number and url; ingestion fills in the rest). REVERTS only
+    links commits that were read. MODIFIES goes to File nodes at HEAD, with line counts.
+    """
+    repo = b.repo
+    files = {props["path"]: fid for fid, props in b.nodes.get("File", {}).items()}
+    current = {
+        alias: props["path"]
+        for props in b.nodes.get("File", {}).values()
+        for alias in props.get("aliases", [])
+    }
+    references = reverts = modifies = 0
+    for i, c in enumerate(commits):
+        ref = ("Commit", make_id(repo, "commit", c.sha))
+        b.node(
+            *ref,
+            sha=c.sha,
+            message=c.message,
+            date=c.date,
+            url=f"https://github.com/{repo}/commit/{c.sha}",
+        )
+        merged = merge_pr_number(c.message)
+        numbers = subject_pr_numbers(c.message) + ([merged] if merged is not None else [])
+        for n in dict.fromkeys(numbers):
+            pr = ("PullRequest", make_id(repo, "pr", n))
+            b.node(*pr, number=n, url=f"https://github.com/{repo}/pull/{n}")
+            b.rel("REFERENCES", ref, pr)
+            references += 1
+        for target in _revert_targets(c, commits[i + 1 :], repo):
+            b.rel("REVERTS", ref, ("Commit", make_id(repo, "commit", target)))
+            reverts += 1
+        for file_id, (added, removed) in _modified_files(c, files, current).items():
+            b.rel("MODIFIES", ref, ("File", file_id), added=added, removed=removed)
+            modifies += 1
+    return HistoryStats(len(commits), references, reverts, modifies)
