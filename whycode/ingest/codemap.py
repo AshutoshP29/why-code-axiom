@@ -12,7 +12,7 @@ import argparse
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
 from whycode.code.entities import EntityKind, parse_file
@@ -105,7 +105,7 @@ def read_history(root: Path, since: str | None = None) -> list[GitCommit]:
         "log",
         "--no-renames",
         "--numstat",
-        f"--format={_RECORD}%H{_FIELD}%P{_FIELD}%aI{_FIELD}%B{_FIELD}",
+        f"--format={_RECORD}%H{_FIELD}%P{_FIELD}%at{_FIELD}%B{_FIELD}",
     ]
     if since:
         args.append(f"--since={since}")
@@ -128,7 +128,7 @@ def read_history(root: Path, since: str | None = None) -> list[GitCommit]:
             GitCommit(
                 sha=sha,
                 parents=tuple(parents.split()),
-                date=datetime.fromisoformat(date),
+                date=datetime.fromtimestamp(int(date), UTC),
                 message=message.strip(),
                 numstat=tuple(numstat),
             )

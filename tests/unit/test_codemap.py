@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 
@@ -327,3 +328,13 @@ def test_cli_without_aura_settings(tiny, tmp_path, monkeypatch, capsys):
     args = ["--repo", R, "--url", root.as_uri(), "--cache-dir", str(tmp_path)]
     assert codemap.main(args) == 2
     assert "NEO4J_URI" in capsys.readouterr().err
+
+
+def test_history_dates_survive_a_malformed_timezone(monkeypatch):
+    # psf/requests has a 2011 commit whose author date reads "+518:00"; the epoch time
+    # git also stores is always valid, so dates are read from it, in UTC.
+    record = "\x1eabc\x1f\x1f1315449530\x1fFix\n\x1f\n\n1\t0\ta.py\n"
+    monkeypatch.setattr(codemap, "git", lambda root, *args: record)
+    (c,) = codemap.read_history(Path("."))
+    assert c.date == datetime(2011, 9, 8, 2, 38, 50, tzinfo=UTC)
+    assert (c.parents, c.numstat) == ((), ((1, 0, "a.py"),))
