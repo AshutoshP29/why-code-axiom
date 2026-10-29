@@ -263,3 +263,67 @@ def test_revert_by_short_sha_and_by_subject():
     assert codemap._revert_targets(by_subject, older, R) == ["abd0000000"]
     not_revert = commit("c" * 10, "Plain change")
     assert codemap._revert_targets(not_revert, older, R) == []
+
+
+def test_cli_dry_run_reports_counts(tiny, tmp_path, capsys):
+    root, shas = tiny
+    code = codemap.main(
+        ["--repo", R, "--url", root.as_uri(), "--cache-dir", str(tmp_path), "--dry-run"]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert f"HEAD {shas['c7'][:12]}: 5 .py files" in out
+    assert "7 commits, 2 PR references, 1 reverts" in out
+    assert (tmp_path / "test" / "tiny" / ".git").exists()
+
+
+def test_cli_writes_with_the_writer(tiny, tmp_path, monkeypatch, capsys):
+    root, _ = tiny
+    written, closed = [], []
+
+    class Driver:
+        def close(self):
+            closed.append(True)
+
+    class Target:
+        name, database = "test", "neo4j"
+
+        def driver(self):
+            return Driver()
+
+    monkeypatch.setattr("whycode.graph.client.local_test_target", lambda: Target())
+    monkeypatch.setattr(
+        "whycode.graph.writer.write_batch", lambda d, db, batch: written.append(batch)
+    )
+    monkeypatch.setattr(
+        "whycode.graph.writer.repo_counts", lambda d, db, repo: ({"File": 5, "Commit": 7}, 40)
+    )
+    args = ["--repo", R, "--url", root.as_uri(), "--cache-dir", str(tmp_path), "--target", "test"]
+    assert codemap.main(args) == 0
+    (batch,) = written
+    assert batch.repo == R and not batch.replaces_decisions_of  # never touches decisions
+    assert "Decision" not in batch.nodes
+    assert closed == [True]
+    out = capsys.readouterr().out
+    assert "Neo4j (test) now holds for test/tiny:" in out and "relationships: 40" in out
+
+
+def test_cli_errors(tmp_path, monkeypatch, capsys):
+    assert codemap.main(["--repo", "not-a-repo"]) == 2
+    missing = (tmp_path / "nowhere").as_uri()
+    assert codemap.main(["--repo", R, "--url", missing, "--cache-dir", str(tmp_path)]) == 1
+    assert "git clone failed" in capsys.readouterr().err
+
+
+def test_cli_without_aura_settings(tiny, tmp_path, monkeypatch, capsys):
+    from whycode.config import ConfigError
+
+    root, _ = tiny
+
+    def no_settings():
+        raise ConfigError("Configuration error (missing: NEO4J_URI).")
+
+    monkeypatch.setattr("whycode.config.get_settings", no_settings)
+    args = ["--repo", R, "--url", root.as_uri(), "--cache-dir", str(tmp_path)]
+    assert codemap.main(args) == 2
+    assert "NEO4J_URI" in capsys.readouterr().err

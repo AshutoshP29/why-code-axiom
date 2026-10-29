@@ -4,9 +4,13 @@
 
 Clones (or updates) https://github.com/<repo> into cache/repos/<owner>/<name>, parses every .py
 file at the default branch's HEAD, and reads `git log` for commits, renames and line counts.
+Everything is written with MERGE (whycode.graph.writer), so a second run changes no count, and
+Decision nodes are never touched.
 """
 
+import argparse
 import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
@@ -294,3 +298,85 @@ def add_history(b: GraphBatch, commits: list[GitCommit]) -> HistoryStats:
             b.rel("MODIFIES", ref, ("File", file_id), added=added, removed=removed)
             modifies += 1
     return HistoryStats(len(commits), references, reverts, modifies)
+
+
+CACHE_DIR = Path(__file__).resolve().parents[2] / "cache" / "repos"
+
+
+def run_codemap(
+    repo: str, root: Path, head_sha: str | None = None, since: str | None = None
+) -> tuple[GraphBatch, HistoryStats]:
+    batch = build_code_map(repo, root, head_sha)
+    return batch, add_history(batch, read_history(root, since))
+
+
+def _target(name: str):
+    from whycode.graph import client
+
+    if name == "test":
+        return client.local_test_target()
+    from whycode.config import get_settings
+
+    return client.aura_target(get_settings())
+
+
+def main(argv: list[str] | None = None) -> int:
+    from whycode.config import ConfigError
+    from whycode.graph.writer import repo_counts, write_batch
+
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--repo", required=True, help="owner/name")
+    parser.add_argument("--target", choices=["aura", "test"], default="aura")
+    parser.add_argument("--since", help="only commits after this date, e.g. 2020-01-01")
+    parser.add_argument("--cache-dir", type=Path, default=CACHE_DIR)
+    parser.add_argument("--url", help="clone from here instead of GitHub (a mirror or local path)")
+    parser.add_argument("--dry-run", action="store_true", help="build and count, write nothing")
+    args = parser.parse_args(argv)
+
+    try:
+        repo = normalize_repo(args.repo)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    dest = args.cache_dir / repo
+    url = args.url or f"https://github.com/{repo}.git"
+    try:
+        print(f"Updating the clone of {repo} in {dest}")
+        head = clone_or_update(url, dest)
+        batch, stats = run_codemap(repo, dest, head, args.since)
+    except GitError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    files = len(batch.nodes.get("File", {}))
+    code = sum(len(batch.nodes.get(label, {})) for label in ("Class", "Function", "ConfigKey"))
+    window = f" since {args.since}" if args.since else ""
+    print(f"HEAD {head[:12]}: {files} .py files, {code} classes/functions/config keys")
+    print(
+        f"History{window}: {stats.commits} commits, {stats.references} PR references, "
+        f"{stats.reverts} reverts, {stats.modifies} file changes"
+    )
+    nodes, rels = batch.count()
+    print(f"Batch: {nodes} nodes, {rels} relationships")
+    if args.dry_run:
+        return 0
+
+    try:
+        target = _target(args.target)
+    except ConfigError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    driver = target.driver()
+    try:
+        write_batch(driver, target.database, batch)
+        by_label, rel_count = repo_counts(driver, target.database, repo)
+    finally:
+        driver.close()
+    print(f"Neo4j ({target.name}) now holds for {repo}:")
+    for label, n in by_label.items():
+        print(f"  {label}: {n}")
+    print(f"  relationships: {rel_count}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
