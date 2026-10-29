@@ -30,6 +30,17 @@ from whycode.ingest.github import GitHubError, RateLimitError
 
 log = logging.getLogger(__name__)
 
+HOSTED_PROVIDERS = "gemini,groq"
+
+
+def provider_order(providers: str | None, redo_fallback: bool) -> str | None:
+    """The providers for this run. A redo exists to replace local answers, so unless the order
+    is given it uses hosted providers only: a part they cannot answer stays pending instead of
+    falling back to a cached local answer again."""
+    if providers:
+        return providers
+    return HOSTED_PROVIDERS if redo_fallback else None
+
 
 class GraphSink(Protocol):
     def write(self, batch: GraphBatch): ...
@@ -255,7 +266,8 @@ def main() -> int:
         cache = PgLLMCache(store.conn)
         cache.ensure_schema()
         cap = s.llm_max_calls if args.max_calls is None else min(args.max_calls, s.llm_max_calls)
-        llm = build_llm_client(s, cache, Budget(cap), order=args.providers)
+        order = provider_order(args.providers, args.redo_fallback)
+        llm = build_llm_client(s, cache, Budget(cap), order=order)
         print("providers: " + " -> ".join(f"{p.name}/{p.model}" for p in llm.providers))
         with GitHubClient(s.github_token.get_secret_value()) as gh:
             if not args.no_select:
@@ -266,7 +278,7 @@ def main() -> int:
                     f"({added} new in the job list)"
                 )
             if args.redo_fallback:
-                hosted = build_llm_client(s, cache, Budget(1), order="gemini,groq")
+                hosted = build_llm_client(s, cache, Budget(1), order=HOSTED_PROVIDERS)
                 redo = requeue_fallback(repo, jobs, store, hosted)
                 print(f"requeued {len(redo)} PR(s) the local model had answered: {redo}")
             if args.dry_run:

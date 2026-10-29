@@ -168,3 +168,11 @@ def test_redo_fallback_requeues_prs_the_local_model_answered():
     s.run()  # gemini now answers and the PR is rewritten
     assert s.jobs.rows[(R, 1565)].status == "written" and len(gemini.calls) == 1
     assert requeue_fallback(R, s.jobs, s.store, hosted) == []  # nothing left to redo
+
+
+def test_a_redo_uses_hosted_providers_only_unless_told_otherwise():
+    from whycode.ingest.run import provider_order
+
+    assert provider_order(None, redo_fallback=True) == "gemini,groq"
+    assert provider_order(None, redo_fallback=False) is None  # LLM_PROVIDERS decides
+    assert provider_order("groq,local", redo_fallback=True) == "groq,local"
