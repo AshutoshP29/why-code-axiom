@@ -23,10 +23,10 @@ async function expectNoViolations(page: Page) {
 const PAGES: { name: string; path: string; loaded: string }[] = [
   { name: 'Home', path: '/', loaded: 'Hotspots' },
   { name: 'Why Workspace', path: why(ID.rebuildAuth, 'q'), loaded: 'Chain of evidence' },
-  { name: 'Refusal', path: why(ID.poolMaxsize, 'q'), loaded: 'What the graph does know' },
+  { name: 'Refusal', path: why(ID.checkCompatibility, 'q'), loaded: 'What the graph does know' },
   { name: 'Hedged answer', path: why(ID.timeout, 'q'), loaded: 'Low confidence: check before relying on this' },
   { name: 'Plain question, matched', path: why(null, 'why does rebuild_auth strip the header?'), loaded: 'Chain of evidence' },
-  { name: 'Plain question, no match', path: why(null, 'why did requests drop chardet?'), loaded: 'What the graph does know' },
+  { name: 'Plain question, no match', path: why(null, 'why did requests drop python 2 support?'), loaded: 'What the graph does know' },
   { name: 'Decision lineage', path: lineage(ID.maxRetries), loaded: 'Commits that touched this key' },
   { name: 'Graph health', path: '/health', loaded: 'Graph contents' },
   { name: 'Evaluation', path: '/evaluation', loaded: 'How a response is scored' },

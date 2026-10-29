@@ -4,10 +4,17 @@ export function basename(path: string): string {
   return path.slice(path.lastIndexOf('/') + 1)
 }
 
-/** How an entity is named on screen: "Session.rebuild_auth", "utils.get_netrc_auth", "max_retries". */
+/** The module a file is: "src/requests/utils.py" is "utils"; a package's "__init__.py" is the package. */
+function moduleName(path: string): string {
+  const parts = path.replace(/\.py$/, '').split('/')
+  const last = parts.pop() ?? ''
+  return last === '__init__' && parts.length > 0 ? parts[parts.length - 1] : last
+}
+
+/** How an entity is named on screen: "Response.apparent_encoding", "utils.get_netrc_auth", "max_retries". */
 export function entityLabel(entity: Entity): string {
   if (entity.kind === 'function' && !entity.qualified_name.includes('.') && entity.path) {
-    return `${basename(entity.path).replace(/\.py$/, '')}.${entity.qualified_name}`
+    return `${moduleName(entity.path)}.${entity.qualified_name}`
   }
   return entity.qualified_name
 }
@@ -24,7 +31,7 @@ export function kindLabel(kind: EntityKind): string {
   return KIND_LABEL[kind]
 }
 
-/** Breadcrumb parts: ["sessions.py", "Session.rebuild_auth()"]. */
+/** Breadcrumb parts: ["models.py", "Response.apparent_encoding()"]. */
 export function entityCrumbs(entity: Entity, withKind = false): string[] {
   const parts: string[] = withKind ? [kindLabel(entity.kind)] : []
   if (entity.kind === 'file') return [...parts, entity.path ?? entity.name]

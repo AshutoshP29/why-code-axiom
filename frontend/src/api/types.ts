@@ -55,7 +55,7 @@ export interface Entity {
   id: string
   kind: EntityKind
   name: string // "rebuild_auth"
-  qualified_name: string // "Session.rebuild_auth"
+  qualified_name: string // "SessionRedirectMixin.rebuild_auth"
   path: string | null // "src/requests/sessions.py"
 }
 

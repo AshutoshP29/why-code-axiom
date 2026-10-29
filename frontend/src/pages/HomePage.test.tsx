@@ -14,6 +14,7 @@ describe('Home', () => {
       expect(within(summary).getByText(value)).toBeInTheDocument()
     }
     expect(screen.getByRole('link', { name: /max_retries\s*4 reversals/ })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Why does apparent_encoding use charset_normalizer?' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Why is pool_maxsize 10?' })).toBeInTheDocument()
     expect(screen.getByText('Sample data')).toBeInTheDocument()
   })
@@ -27,7 +28,7 @@ describe('Home', () => {
 
     await user.click(within(ask).getByRole('button', { name: 'Pick an entity' }))
     await user.type(screen.getByRole('combobox', { name: /search functions/i }), 'rebuild')
-    await user.click(await screen.findByRole('option', { name: /Session\.rebuild_auth/ }))
+    await user.click(await screen.findByRole('option', { name: /SessionRedirectMixin\.rebuild_auth/ }))
 
     expect(trace).toBeEnabled()
     await user.type(within(ask).getByRole('textbox', { name: 'Your question' }), 'why strip the header?')
@@ -44,7 +45,7 @@ describe('Home', () => {
 
     expect(currentLocation()).toBe('/why?q=why does rebuild_auth strip the header?')
     expect(
-      await screen.findByRole('heading', { level: 1, name: /Session\.rebuild_auth strip the Authorization header/ }),
+      await screen.findByRole('heading', { level: 1, name: /rebuild_auth strip the Authorization header/ }),
     ).toBeInTheDocument()
     // The top bar keeps the question as typed, still with no entity picked.
     const bar = screen.getByRole('search', { name: 'Ask why' })

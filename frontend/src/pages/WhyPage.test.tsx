@@ -7,13 +7,38 @@ import { whyPath } from '../lib/routes'
 import { currentLocation, renderApp } from '../test/render'
 
 describe('Why Workspace', () => {
+  it('answers apparent_encoding from PR #5797, linking the real sources', async () => {
+    renderApp(whyPath(E.apparentEncoding.id, 'why charset_normalizer?'))
+
+    expect(
+      await screen.findByRole('heading', {
+        level: 1,
+        name: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?',
+      }),
+    ).toBeInTheDocument()
+    expect(screen.getByText('Active decision')).toBeInTheDocument()
+    expect(screen.queryByRole('note')).not.toBeInTheDocument() // nothing was overridden
+    const chain = screen.getByRole('list', { name: 'Evidence, from the report to the code' })
+    expect(within(chain).getAllByRole('listitem')).toHaveLength(4)
+    expect(within(chain).getByRole('link', { name: /^PR #5797: Switch LGPL'd chardet/ })).toHaveAttribute(
+      'href',
+      'https://github.com/psf/requests/pull/5797',
+    )
+    expect(within(chain).getByRole('link', { name: /^3e798b9:/ })).toHaveAttribute(
+      'href',
+      'https://github.com/psf/requests/commit/3e798b94717918ea48a38cdc315bf47a1067cb39',
+    )
+    expect(screen.getByRole('button', { name: /^Ask\s*@ashb/ })).toHaveTextContent('Inactive')
+    expect(screen.getByRole('button', { name: /^Ask\s*@nateprewitt/ })).toHaveTextContent('Active')
+  })
+
   it('answers with the decision, the overridden rule and four linked sources', async () => {
     renderApp(whyPath(E.rebuildAuth.id, 'strips the Authorization header on redirect?'))
 
     expect(
       await screen.findByRole('heading', {
         level: 1,
-        name: 'Why does Session.rebuild_auth strip the Authorization header on redirect?',
+        name: 'Why does rebuild_auth strip the Authorization header on redirect?',
       }),
     ).toBeInTheDocument()
     expect(screen.getByText('Active decision')).toBeInTheDocument()
@@ -64,7 +89,7 @@ describe('Why Workspace', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Ask @maintainer_a' })
     const message = within(dialog).getByRole<HTMLTextAreaElement>('textbox', { name: 'Message' })
-    expect(message.value).toContain("I'm looking at Session.rebuild_auth in psf/requests")
+    expect(message.value).toContain("I'm looking at SessionRedirectMixin.rebuild_auth in psf/requests")
     expect(message.value).toContain('Strip the Authorization header when a redirect changes host')
     await user.click(within(dialog).getByRole('button', { name: 'Copy message' }))
     expect(within(dialog).getByRole('button', { name: 'Copied' })).toBeInTheDocument()
@@ -76,9 +101,9 @@ describe('Why Workspace', () => {
   it('re-asks about a neighbouring entity from the graph', async () => {
     const user = userEvent.setup()
     renderApp(whyPath(E.rebuildAuth.id, 'q'))
-    await user.click(await screen.findByRole('button', { name: 'Ask about Session.resolve_redirects' }))
+    await user.click(await screen.findByRole('button', { name: 'Ask about SessionRedirectMixin.resolve_redirects' }))
 
-    expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is Session.resolve_redirects like this?`)
+    expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=Why is SessionRedirectMixin.resolve_redirects like this?`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
   })
 
@@ -180,8 +205,8 @@ describe('Asking without an entity', () => {
   it('says which item the question was matched to', async () => {
     renderApp(whyPath(null, asked))
     expect(await screen.findByText('Active decision')).toBeInTheDocument()
-    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to Session.rebuild_auth (score 0.90) from your question.')
-    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Session.rebuild_auth()')
+    expect(screen.getByText(/^Matched to/)).toHaveTextContent('Matched to SessionRedirectMixin.rebuild_auth (score 0.90) from your question.')
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('SessionRedirectMixin.rebuild_auth()')
   })
 
   it('asks the same question about a different entity when the match is wrong', async () => {
@@ -189,7 +214,7 @@ describe('Asking without an entity', () => {
     renderApp(whyPath(null, asked))
     await user.click(await screen.findByRole('button', { name: 'Pick a different entity' }))
     await user.type(screen.getByRole('combobox'), 'resolve')
-    await user.click(await screen.findByRole('option', { name: /Session\.resolve_redirects/ }))
+    await user.click(await screen.findByRole('option', { name: /SessionRedirectMixin\.resolve_redirects/ }))
 
     expect(currentLocation()).toBe(`/why?entity=${E.resolveRedirects.id}&q=${asked}`)
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
@@ -210,40 +235,42 @@ describe('Asking without an entity', () => {
 
   it('offers to pick an item when nothing matched', async () => {
     const user = userEvent.setup()
-    renderApp(whyPath(null, 'why did requests drop chardet?'))
+    renderApp(whyPath(null, 'why did requests drop python 2 support?'))
     await user.click(await screen.findByRole('button', { name: 'Pick an item to ask about' }))
     await user.type(screen.getByRole('combobox'), 'max_r')
     await user.click(await screen.findByRole('option', { name: /max_retries/ }))
-    expect(currentLocation()).toBe(`/why?entity=${E.maxRetries.id}&q=why did requests drop chardet?`)
+    expect(currentLocation()).toBe(`/why?entity=${E.maxRetries.id}&q=why did requests drop python 2 support?`)
   })
 })
 
 describe('Refusal', () => {
   it('refuses below the threshold and keeps facts apart from reasons', async () => {
-    renderApp(whyPath(E.poolMaxsize.id, 'why is the default 10?'))
+    renderApp(whyPath(E.checkCompatibility.id, 'why the version cap?'))
 
     expect(await screen.findByText('No recorded decision')).toBeInTheDocument()
     expect(screen.getByText('Refuses below 40% · warns below 70%')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'What the graph does know' })).toBeInTheDocument()
-    expect(screen.getByText('Introduced in commit e4f5a6b, 2012-05-02')).toBeInTheDocument()
-    expect(screen.getByText('31% match')).toBeInTheDocument()
-    expect(screen.getByText('Why only 18%?')).toBeInTheDocument()
+    // The one fact the graph has: the commit that changed it, with no reason attached.
+    expect(screen.getByText("Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer")).toBeInTheDocument()
+    expect(screen.getByText('changed it: +14 / -6 lines')).toBeInTheDocument()
+    expect(screen.getByText('36% match')).toBeInTheDocument()
+    expect(screen.getByText('Why only 12%?')).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'Open commit history' })).toHaveAttribute(
       'href',
-      'https://github.com/psf/requests/commits/main/src/requests/adapters.py',
+      'https://github.com/psf/requests/commits/main/src/requests/__init__.py',
     )
     expect(screen.queryByText('Active decision')).not.toBeInTheDocument()
   })
 
   it('still explains itself when a question matched no item', async () => {
-    renderApp(`/why?${new URLSearchParams({ q: 'why did requests drop chardet?' })}`)
+    renderApp(`/why?${new URLSearchParams({ q: 'why did requests drop python 2 support?' })}`)
 
     expect(await screen.findByText('No matching item')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: 'why did requests drop chardet?' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'why did requests drop python 2 support?' })).toBeInTheDocument()
     expect(screen.queryByRole('navigation', { name: 'Breadcrumb' })).not.toBeInTheDocument()
     expect(screen.getByText(/No function, file or config key in the graph matches this question/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'PR #1565: only strip auth when the host changes' })).toBeInTheDocument()
-    expect(screen.getByText('18% match')).toBeInTheDocument()
+    expect(screen.getByText('9% match')).toBeInTheDocument()
     // There is no item to flag or to name an owner for.
     expect(screen.queryByRole('button', { name: 'Flag as missing context' })).not.toBeInTheDocument()
     expect(screen.queryByText('Last owner of this code')).not.toBeInTheDocument()
