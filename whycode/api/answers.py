@@ -256,6 +256,11 @@ def _related(hit: m.EntityMatch, repo: str) -> m.RelatedItem:
     )
 
 
+def _independent_sources(dv: DecisionView) -> int:
+    """People quoted in the evidence: two comments by the same person are one source."""
+    return len({ev.author or ev.id for ev in dv.evidence})
+
+
 def _fact(f: GraphFact, entity_id: str, url: str) -> m.Fact:
     return m.Fact(
         title=f.title,
@@ -312,7 +317,7 @@ def ask(run: Run, repo: m.Repo, question: str, selected: m.Entity | None) -> m.A
         Signals(
             entity_match=match,
             evidence_kind=dv.evidence_kind,
-            source_count=len({ev.id for ev in dv.evidence}),
+            source_count=_independent_sources(dv),
             supersession=supersession,
             citations_verified=all(ev.quote.strip() for ev in dv.evidence),
         )

@@ -309,3 +309,11 @@ def test_weak_search_match_is_refused_not_answered_with_an_unrelated_decision():
     assert a["entity"] is None and a["confidence"] < 0.4
     assert [r["source"]["id"] for r in a["related"]] == [FN, UNEXPLAINED]  # pick one of these
     assert not any("SUPPORTED_BY" in c for c, _ in graph.calls)  # no decision was looked up
+
+
+def test_the_same_person_quoted_twice_is_one_independent_source():
+    row = q5a_row()
+    row["evidence"] = [evidence(0, author="ashb"), evidence(1, kind="pr_comment", author="ashb")]
+    a = ask(FakeGraph(q5a=[row])).json()
+    labels = {f["label"]: f for f in a["confidence_factors"]}
+    assert labels["Independent sources"]["display"] == "1 of 2 needed"
