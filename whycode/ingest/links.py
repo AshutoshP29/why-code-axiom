@@ -27,6 +27,7 @@ _CLOSING_BEFORE = re.compile(
 )
 _SUBJECT_PR = re.compile(rf"\((?:{_REPO})?#(?P<num>\d+)\)")
 _REVERT_SUBJECT = re.compile(r'^Revert "(?P<subject>.+)"\s*$')
+_MERGE_PR = re.compile(r"^Merge pull request #(?P<num>\d+) from \S")
 _REVERTS_SHA = re.compile(r"\bThis reverts commit (?P<sha>[0-9a-f]{7,40})\b", re.IGNORECASE)
 _REVERTS_REF = re.compile(rf"\breverts?[ \t]+(?:(?P<repo>{_REPO}))?#(?P<num>\d+)\b", re.IGNORECASE)
 
@@ -81,6 +82,13 @@ def subject_pr_numbers(message: str) -> list[int]:
     """PR numbers written as "(#N)" in the first line of a commit message (squash-merge style)."""
     subject = message.splitlines()[0] if message else ""
     return [int(m["num"]) for m in _SUBJECT_PR.finditer(subject)]
+
+
+def merge_pr_number(message: str) -> int | None:
+    """The PR a GitHub merge commit merged: "Merge pull request #N from owner/branch"."""
+    subject = message.splitlines()[0] if message else ""
+    m = _MERGE_PR.match(subject)
+    return int(m["num"]) if m else None
 
 
 def parse_revert(message: str, repo: str) -> Revert | None:

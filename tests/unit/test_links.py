@@ -3,6 +3,7 @@ import pytest
 from whycode.ingest.links import (
     Ref,
     closing_refs,
+    merge_pr_number,
     parse_refs,
     parse_revert,
     subject_pr_numbers,
@@ -141,3 +142,19 @@ def test_reverts_pr_reference():
 )
 def test_not_reverts(msg):
     assert parse_revert(msg, R) is None
+
+
+@pytest.mark.parametrize(
+    ("message", "number"),
+    [
+        ("Merge pull request #5797 from ashb/charset\n\nSwitch detector", 5797),
+        ("Merge pull request #7 from someone/feature", 7),
+        ("Merge branch 'main' into feature", None),  # not a PR merge
+        ("Merge pull request #12", None),  # GitHub always names the branch
+        ("Fix: Merge pull request #3 from x/y", None),  # only at the start of the subject
+        ("first line\nMerge pull request #4 from x/y", None),  # only the subject counts
+        ("", None),
+    ],
+)
+def test_merge_pr_number(message, number):
+    assert merge_pr_number(message) == number
