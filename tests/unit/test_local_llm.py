@@ -10,6 +10,7 @@ from whycode.llm.client import (
     Budget,
     BudgetExceededError,
     LLMClient,
+    LLMError,
     build_providers,
     classify_error,
 )
@@ -234,3 +235,27 @@ def test_cached_local_answer_also_waits_for_a_rate_limited_hosted_provider():
         [groq, FreeProvider("local", "qwen")], cache, Budget(5), sleep=lambda s: None
     )
     assert client.complete_json("s", "u", prompt_version="v").provider == "groq"
+
+
+def test_too_large_for_hosted_is_never_answered_by_local_so_the_caller_splits():
+    groq = FakeProvider("groq", "q", [StatusError(413, "status_code")])
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(5), sleep=lambda s: None)
+    with pytest.raises(LLMError) as info:
+        client.complete_json("s", "u", prompt_version="v")
+    assert "too_large" in info.value.reasons and local.calls == []
+
+
+def test_too_large_part_is_split_for_groq_not_sent_to_local():
+    from tests.unit.test_extractor import thread as fixture_thread
+    from tests.unit.test_extractor import too_large_over
+    from whycode.extract.extractor import chunk_sources, extract_thread
+    from whycode.extract.prompt import build_user_prompt
+
+    t = fixture_thread()
+    limit = len(build_user_prompt(t, chunk_sources(t)[0], "1", 1)) * 3 // 4
+    groq = FakeProvider("groq", "q", [too_large_over(limit)] * 3)
+    local = FreeProvider("local", "qwen", ['{"decisions": []}'] * 3)
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(10), sleep=lambda s: None)
+    r = extract_thread(t, client)
+    assert [c.label for c in r.chunks] == ["1.1", "1.2"] and local.calls == []

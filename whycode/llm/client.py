@@ -203,6 +203,10 @@ class LLMClient:
                     # The hosted providers only failed for a passing reason (rate limit,
                     # overload): wait for them instead of settling for the weaker local model.
                     continue
+                if not _is_hosted(p) and "too_large" in reasons:
+                    # A request too large for a hosted model is split by the caller into parts
+                    # that fit; answering it whole with the weak local model would skip that.
+                    continue
                 if local_hit and p is local_hit[0]:
                     # Hosted providers failed: the local answer we already have is the fallback.
                     self.cache_hits += 1
