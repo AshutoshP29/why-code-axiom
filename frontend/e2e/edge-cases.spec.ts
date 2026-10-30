@@ -45,14 +45,14 @@ test('Clearing a picked entity sends the question on its own', async ({ page }) 
   await ask.getByRole('button', { name: 'Pick an entity' }).click()
   await page.getByRole('combobox').fill('verify')
   await page.getByRole('option', { name: /verify/ }).first().click()
-  await ask.getByRole('textbox', { name: 'Your question' }).fill('why did requests drop chardet?')
+  await ask.getByRole('textbox', { name: 'Your question' }).fill('why did requests drop python 2 support?')
   await ask.getByRole('button', { name: 'Clear entity' }).click()
   await ask.getByRole('button', { name: 'Trace' }).click()
 
   await expect(page.getByText('No matching item')).toBeVisible()
   const params = new URL(page.url()).searchParams
   expect(params.has('entity')).toBe(false)
-  expect(params.get('q')).toBe('why did requests drop chardet?')
+  expect(params.get('q')).toBe('why did requests drop python 2 support?')
 })
 
 test('Markup in a plain question is shown as text, never run', async ({ page }) => {

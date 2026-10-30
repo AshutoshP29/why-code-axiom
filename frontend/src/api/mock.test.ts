@@ -36,7 +36,7 @@ describe('mock API', () => {
 
   it('refuses with no entity when nothing matches the question', async () => {
     const api = createMockApi({ delayMs: 0 })
-    const answer = await api.ask(SAMPLE_REPO, null, 'why did requests drop chardet?')
+    const answer = await api.ask(SAMPLE_REPO, null, 'why did requests drop python 2 support?')
     expect(answer).toMatchObject({ verdict: 'refused', entity: null, matched_by: 'search', match_score: null })
     if (answer.verdict !== 'refused') throw new Error('expected a refusal')
     // Evidence that shares a word ("drop") is offered as related only, with a low score.
@@ -63,6 +63,52 @@ describe('mock API', () => {
       matched_by: 'search',
       match_score: 0.75,
     })
+  })
+
+  it('answers apparent_encoding with the real decision from PR #5797', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.apparentEncoding.id, 'why?')
+    if (answer.verdict !== 'answered') throw new Error(`expected an answer, got ${answer.verdict}`)
+    expect(answer.decision).toMatchObject({
+      summary: 'Replace chardet (LGPL) with charset_normalizer (MIT)',
+      decided_at: '2021-07-06',
+      proposed_by: 'ashb',
+      source: { id: 'psf/requests#pr:5797', url: 'https://github.com/psf/requests/pull/5797' },
+    })
+    expect(answer.evidence_chain.map((s) => s.source.id)).toContain(
+      'psf/requests#commit:3e798b94717918ea48a38cdc315bf47a1067cb39',
+    )
+
+    // Asked from Home with nothing picked, it is found by name.
+    expect(await api.ask(SAMPLE_REPO, null, 'why does apparent_encoding use charset_normalizer?')).toMatchObject({
+      verdict: 'answered',
+      entity: { id: E.apparentEncoding.id },
+      matched_by: 'search',
+    })
+  })
+
+  it('refuses check_compatibility with only the commit that changed it', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.checkCompatibility.id, 'why the version cap?')
+    if (answer.verdict !== 'refused') throw new Error(`expected a refusal, got ${answer.verdict}`)
+    expect(answer.known_facts).toEqual([
+      expect.objectContaining({
+        title: "Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+        detail: 'changed it: +14 / -6 lines',
+        meta: ['2021-07-06', '@ashb'],
+      }),
+    ])
+    expect(answer.who_to_ask.map((p) => p.login)).toEqual(['ashb'])
+  })
+
+  it('links the shared commit to a decision only where the decision affects the item', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const affected = await api.getLineage(SAMPLE_REPO, E.apparentEncoding.id, null)
+    const changedOnly = await api.getLineage(SAMPLE_REPO, E.checkCompatibility.id, null)
+    expect(affected.decisions.map((d) => d.source.label)).toEqual(['PR #5797'])
+    expect(affected.commits[0]).toMatchObject({ sha: '3e798b94717918ea48a38cdc315bf47a1067cb39', decision_id: affected.decisions[0].id })
+    expect(changedOnly.decisions).toEqual([])
+    expect(changedOnly.commits[0]).toMatchObject({ sha: '3e798b94717918ea48a38cdc315bf47a1067cb39', decision_id: null })
   })
 
   it('finds the sample class in an entity search', async () => {
@@ -118,5 +164,20 @@ describe('mock API', () => {
     t.advance(SIMULATED_RUN_MS)
     const repo = (await api.listRepos()).find((r) => r.id === 'someone/project')
     expect(repo).toMatchObject({ status: 'READY', partial: false, progress_pct: 100 })
+  })
+
+  it('sends alternatives and every approver with each decision, as lists', async () => {
+    const api = createMockApi({ delayMs: 0 })
+    const answer = await api.ask(SAMPLE_REPO, E.rebuildAuth.id, 'why?')
+    if (answer.verdict !== 'answered') throw new Error(`expected an answer, got ${answer.verdict}`)
+    expect(answer.decision.alternatives).toHaveLength(2)
+    expect(answer.decision.approved_by).toEqual(['maintainer_b', 'maintainer_c'])
+    // An older, replaced decision with nothing recorded still sends empty lists, never a missing field.
+    expect(answer.superseded[0].decision).toMatchObject({ alternatives: [], approved_by: [] })
+
+    const lineage = await api.getLineage(SAMPLE_REPO, E.maxRetries.id, null)
+    for (const d of lineage.decisions) {
+      expect(Array.isArray(d.alternatives) && Array.isArray(d.approved_by)).toBe(true)
+    }
   })
 })

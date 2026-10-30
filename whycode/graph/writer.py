@@ -83,3 +83,33 @@ def delete_repo(driver: Driver, database: str, repo: str) -> int:
         return session.run(
             "MATCH (n {repo: $repo}) DETACH DELETE n RETURN count(n) AS n", repo=repo
         ).single()["n"]
+
+
+REPO_STATES = frozenset({"QUEUED", "INGESTING", "READY", "ERROR"})
+REPO_STAGES = frozenset({"fetch", "parse", "link", "extract", "supersession"})
+
+
+def set_repo_state(
+    driver: Driver,
+    database: str,
+    repo: str,
+    *,
+    status: str,
+    stage: str | None = None,
+    progress_pct: float | None = None,
+    partial: bool | None = None,
+    error: str | None = None,
+) -> None:
+    """Record ingestion progress on the Repo node (what the progress and health screens read)."""
+    if status not in REPO_STATES or (stage is not None and stage not in REPO_STAGES):
+        raise ValueError(f"bad repo state {status!r} / stage {stage!r}")
+    props = {"status": status, "stage": stage, "progress_pct": progress_pct, "partial": partial}
+    props = {k: v for k, v in props.items() if v is not None}
+    props["error"] = error  # always set, so a finished run clears an old error
+    with driver.session(database=database) as session:
+        session.run(
+            "MERGE (r:Repo {id: $repo}) SET r += $props, r.repo = $repo, "
+            "r.last_synced_at = datetime()",
+            repo=repo,
+            props=props,
+        ).consume()

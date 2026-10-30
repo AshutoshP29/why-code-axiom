@@ -90,7 +90,7 @@ test('Talks to the API: no sample badge, and requests carry the repo and graph i
 test('A plain question sends entity_id: null, and the page shows what the API matched', async ({ page }) => {
   const calls = await fakeBackend(page)
   await page.goto(why(null, 'why does rebuild_auth strip the header?'))
-  await expect(page.getByText(/^Matched to/)).toContainText('Session.rebuild_auth (score 0.90)')
+  await expect(page.getByText(/^Matched to/)).toContainText('SessionRedirectMixin.rebuild_auth (score 0.90)')
   expect(calls).toContainEqual({
     method: 'POST',
     path: '/ask',
@@ -150,6 +150,6 @@ test('Flagging a gap sends the item and the question', async ({ page }) => {
     method: 'POST',
     path: '/gaps',
     params: {},
-    body: { repo: 'psf/requests', entity_id: ID.poolMaxsize, question: 'Why is HTTPAdapter.pool_maxsize 10 by default?' },
+    body: { repo: 'psf/requests', entity_id: ID.poolMaxsize, question: 'why is the default 10?' },
   })
 })

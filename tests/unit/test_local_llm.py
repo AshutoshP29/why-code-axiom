@@ -10,6 +10,7 @@ from whycode.llm.client import (
     Budget,
     BudgetExceededError,
     LLMClient,
+    LLMError,
     build_providers,
     classify_error,
 )
@@ -84,13 +85,13 @@ def test_local_calls_do_not_use_the_api_budget():
     assert len(local.calls) == 3 and client.budget.used == 0 and client.api_calls == 3
 
 
-def test_apis_down_and_budget_left_falls_back_to_local():
-    gem = FakeProvider("gemini", "g", [StatusError(503)])
+def test_apis_down_through_every_round_falls_back_to_local():
+    gem = FakeProvider("gemini", "g", [StatusError(503)] * 3)
     local = FreeProvider("local", "qwen", ['{"ok": 1}'])
-    r = LLMClient([gem, local], MemoryLLMCache(), Budget(5)).complete_json(
-        "s", "u", prompt_version="v"
-    )
+    client = LLMClient([gem, local], MemoryLLMCache(), Budget(5), sleep=lambda s: None)
+    r = client.complete_json("s", "u", prompt_version="v")
     assert r.provider == "local" and r.text == '{"ok": 1}'
+    assert len(gem.calls) == 2  # switched off after two 503s; local answers on the last round
 
 
 def test_spent_budget_skips_paid_providers_and_uses_the_free_one():
@@ -193,3 +194,68 @@ def test_is_cached_follows_the_same_rule():
     assert client.is_cached("s", "u", prompt_version="v") is False  # gemini would be asked
     spent, _, _ = _cached_local_client([], budget=0)
     assert spent.is_cached("s", "u", prompt_version="v") is True  # local answer would be used
+
+
+# --- a passing rate limit waits for the hosted model instead of using the local one --------------
+
+
+def test_rate_limited_hosted_provider_is_waited_for_not_replaced_by_local():
+    groq = FakeProvider("groq", "q", [StatusError(429), '{"from": "groq"}'])
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    slept = []
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(5), sleep=slept.append)
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.provider == "groq" and local.calls == [] and slept  # waited, then groq answered
+
+
+def test_local_answers_on_the_final_round_when_hosted_keeps_failing():
+    groq = FakeProvider("groq", "q", [StatusError(429)] * 3)
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(5), sleep=lambda s: None)
+    r = client.complete_json("s", "u", prompt_version="v")
+    assert r.provider == "local" and len(groq.calls) == 3 and len(local.calls) == 1
+
+
+def test_local_answers_at_once_when_hosted_fails_for_a_lasting_reason():
+    groq = FakeProvider("groq", "q", [StatusError(400)])
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    slept = []
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(5), sleep=slept.append)
+    assert client.complete_json("s", "u", prompt_version="v").provider == "local"
+    assert slept == []
+
+
+def test_cached_local_answer_also_waits_for_a_rate_limited_hosted_provider():
+    cache = MemoryLLMCache()
+    LLMClient(
+        [FreeProvider("local", "qwen", ['{"from": "local"}'])], cache, Budget(0)
+    ).complete_json("s", "u", prompt_version="v")
+    groq = FakeProvider("groq", "q", [StatusError(429), '{"from": "groq"}'])
+    client = LLMClient(
+        [groq, FreeProvider("local", "qwen")], cache, Budget(5), sleep=lambda s: None
+    )
+    assert client.complete_json("s", "u", prompt_version="v").provider == "groq"
+
+
+def test_too_large_for_hosted_is_never_answered_by_local_so_the_caller_splits():
+    groq = FakeProvider("groq", "q", [StatusError(413, "status_code")])
+    local = FreeProvider("local", "qwen", ['{"from": "local"}'])
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(5), sleep=lambda s: None)
+    with pytest.raises(LLMError) as info:
+        client.complete_json("s", "u", prompt_version="v")
+    assert "too_large" in info.value.reasons and local.calls == []
+
+
+def test_too_large_part_is_split_for_groq_not_sent_to_local():
+    from tests.unit.test_extractor import thread as fixture_thread
+    from tests.unit.test_extractor import too_large_over
+    from whycode.extract.extractor import chunk_sources, extract_thread
+    from whycode.extract.prompt import build_user_prompt
+
+    t = fixture_thread()
+    limit = len(build_user_prompt(t, chunk_sources(t)[0], "1", 1)) * 3 // 4
+    groq = FakeProvider("groq", "q", [too_large_over(limit)] * 3)
+    local = FreeProvider("local", "qwen", ['{"decisions": []}'] * 3)
+    client = LLMClient([groq, local], MemoryLLMCache(), Budget(10), sleep=lambda s: None)
+    r = extract_thread(t, client)
+    assert [c.label for c in r.chunks] == ["1.1", "1.2"] and local.calls == []

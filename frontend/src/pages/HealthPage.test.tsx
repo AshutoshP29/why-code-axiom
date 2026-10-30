@@ -23,6 +23,7 @@ describe('Graph health', () => {
     const dialog = screen.getByRole('dialog', { name: 'Re-run ingestion for psf/requests?' })
     await user.click(within(dialog).getByRole('button', { name: 'Re-run ingestion' }))
 
-    expect(await screen.findByRole('heading', { name: 'Reading psf/requests' })).toBeInTheDocument()
+    // Home loads the repo list and the ingestion first; on a busy laptop that took over the 1 s default.
+    expect(await screen.findByRole('heading', { name: 'Reading psf/requests' }, { timeout: 5000 })).toBeInTheDocument()
   })
 })

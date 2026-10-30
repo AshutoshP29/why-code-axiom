@@ -8,7 +8,11 @@
 - A reply that is cut off or is not valid JSON counts as a failed attempt: it is never cached,
   and the next provider is tried.
 - Circuit breaker: a provider that is unavailable or times out trip_after times in a row is
-  skipped for the rest of the run, so a dead provider stops costing a call per request.
+  skipped for cooldown_s, so a dead provider stops costing a call per request.
+- A rate limit that asks for a longer wait than max_wait_s (a daily quota, say) switches that
+  provider off for as long as it asked, instead of retrying it and spending the budget.
+  One that is rate limited limit_trip_after times in a row with no hint at all (Gemini's
+  used-up quota) is switched off for cooldown_s.
 - If every provider failed for a transient reason (rate limit, overload, timeout, cut-off reply),
   the whole chain is retried after a backoff, up to max_rounds.
 - dry_run returns what would be sent and makes no call.
@@ -124,7 +128,10 @@ class LLMClient:
         backoff_s: float = 20.0,
         max_wait_s: float = 120.0,
         trip_after: int = 2,
+        limit_trip_after: int = 3,
+        cooldown_s: float = 600.0,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
         redact: Callable[[str], str] = lambda s: s,
     ):
         if not providers:
@@ -132,9 +139,11 @@ class LLMClient:
         self.providers, self.cache, self.budget = list(providers), cache, budget
         self.max_rounds, self.backoff_s, self.max_wait_s = max_rounds, backoff_s, max_wait_s
         self._sleep, self._redact = sleep, redact
-        self.trip_after = trip_after
+        self.trip_after, self.cooldown_s, self._clock = trip_after, cooldown_s, clock
+        self.limit_trip_after = limit_trip_after
         self._down_streak: dict[str, int] = {}
-        self.tripped: set[str] = set()
+        self._limit_streak: dict[str, int] = {}
+        self._off_until: dict[str, float] = {}
         self.api_calls = 0
         self.cache_hits = 0
 
@@ -189,7 +198,22 @@ class LLMClient:
                 failures.append("every provider is switched off for this run (unavailable)")
                 break
             attempted = 0
+            last_round = round_no == self.max_rounds - 1
             for p in live:
+                if (
+                    not _is_hosted(p)
+                    and not last_round
+                    and reasons
+                    and set(reasons) <= TRANSIENT
+                    and self._hosted_usable()
+                ):
+                    # The hosted providers only failed for a passing reason (rate limit,
+                    # overload): wait for them instead of settling for the weaker local model.
+                    continue
+                if not _is_hosted(p) and "too_large" in reasons:
+                    # A request too large for a hosted model is split by the caller into parts
+                    # that fit; answering it whole with the weak local model would skip that.
+                    continue
                 if local_hit and p is local_hit[0]:
                     # Hosted providers failed: the local answer we already have is the fallback.
                     self.cache_hits += 1
@@ -207,7 +231,13 @@ class LLMClient:
                     reason = classify_error(exc)
                     reasons.append(reason)
                     all_reasons.append(reason)
-                    hints.append(retry_after_seconds(exc) or 0.0)
+                    hint = retry_after_seconds(exc) or 0.0
+                    if reason == "rate_limit" and hint > self.max_wait_s:
+                        self._switch_off(p.name, hint, f"rate limited for {hint:.0f}s")
+                        hint = 0.0  # it is off now; do not wait for it
+                    elif reason == "rate_limit" and hint == 0.0:
+                        self._note_unhinted_limit(p.name)
+                    hints.append(hint)
                     msg = self._redact(
                         f"{p.name}/{p.model}: {reason} ({type(exc).__name__}: {_short(exc)})"
                     )
@@ -215,7 +245,7 @@ class LLMClient:
                     log.warning("LLM call failed: %s; trying next provider", msg)
                     self._note_failure(p.name, reason)
                     continue
-                self._down_streak[p.name] = 0
+                self._down_streak[p.name] = self._limit_streak[p.name] = 0
                 self.cache.put(
                     cache_key(prompt_version, p.model, prompt_input),
                     response=text,
@@ -244,18 +274,35 @@ class LLMClient:
             _is_hosted(p) and p.name not in self.tripped for p in self.providers
         )
 
+    @property
+    def tripped(self) -> set[str]:
+        """Providers switched off right now. Each comes back when its time is up for another try."""
+        now = self._clock()
+        return {n for n, until in self._off_until.items() if now < until}
+
+    def _switch_off(self, name: str, seconds: float, why: str) -> None:
+        self._off_until[name] = self._clock() + seconds
+        log.warning("%s %s; skipping it for %.0f minutes", name, why, seconds / 60)
+
+    def all_switched_off(self) -> bool:
+        return {p.name for p in self.providers} <= self.tripped
+
+    def _note_unhinted_limit(self, name: str) -> None:
+        self._limit_streak[name] = self._limit_streak.get(name, 0) + 1
+        if self._limit_streak[name] >= self.limit_trip_after:
+            self._limit_streak[name] = 0
+            n = self.limit_trip_after
+            self._switch_off(name, self.cooldown_s, f"rate limited {n} times in a row, no hint")
+
     def _note_failure(self, name: str, reason: str) -> None:
         if reason not in TRIPS_BREAKER:
             self._down_streak[name] = 0
             return
         self._down_streak[name] = self._down_streak.get(name, 0) + 1
         if self._down_streak[name] >= self.trip_after and name not in self.tripped:
-            self.tripped.add(name)
-            log.warning(
-                "%s unavailable %d times in a row; skipping it for this run",
-                name,
-                self._down_streak[name],
-            )
+            self._switch_off(name, self.cooldown_s, f"unavailable {self.trip_after} times in a row")
+            # After the cool-down it gets one try: a single failure switches it off again.
+            self._down_streak[name] = self.trip_after - 1
 
 
 PROVIDER_NAMES = ("gemini", "groq", "local")

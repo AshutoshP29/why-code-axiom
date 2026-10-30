@@ -31,6 +31,8 @@ class FakeGitHub:
         if path not in self.routes:
             return httpx.Response(404, json={"message": "Not Found"})
         body = self.routes[path]
+        if callable(body):  # a route can compute its answer, e.g. a search endpoint
+            return body(request)
         if isinstance(body, list):
             per_page = int(request.url.params.get("per_page", 30))
             page = int(request.url.params.get("page", 1))
@@ -121,3 +123,63 @@ class MemoryLLMCache:
 
     def put(self, key, **fields):
         self.rows[key] = fields
+
+
+class MemoryJobStore:
+    """Same interface as whycode.ingest.select.JobStore, backed by a dict."""
+
+    def __init__(self):
+        from whycode.ingest.select import Job
+
+        self._Job = Job
+        self.rows: dict[tuple[str, int], Job] = {}
+
+    def enqueue(self, repo, candidates):
+        added = 0
+        for c in candidates:
+            key = (repo, c.number)
+            if key in self.rows:
+                self.rows[key].title, self.rows[key].comments = c.title, c.comments
+            else:
+                self.rows[key] = self._Job(
+                    repo, c.number, c.title, c.comments, "queued", None, 0, None
+                )
+                added += 1
+        return added
+
+    def _sorted(self, repo):
+        return sorted(
+            (j for (r, _), j in self.rows.items() if r == repo),
+            key=lambda j: (-j.comments, j.number),
+        )
+
+    def pending(self, repo):
+        return [j for j in self._sorted(repo) if j.status in ("queued", "fetched")]
+
+    def all(self, repo):
+        return self._sorted(repo)
+
+    def mark(self, repo, number, status, *, decisions=None, add_calls=0, error=None):
+        job = self.rows[(repo, number)]
+        job.status, job.error = status, error
+        job.calls += add_calls
+        if decisions is not None:
+            job.decisions = decisions
+
+    def counts(self, repo):
+        out = {}
+        for j in self.all(repo):
+            out[j.status] = out.get(j.status, 0) + 1
+        return out
+
+
+def search_route(items):
+    """A fake /search/issues: pages `items` like GitHub (total_count + items per page)."""
+
+    def handler(request):
+        per_page = int(request.url.params.get("per_page", 30))
+        page = int(request.url.params.get("page", 1))
+        chunk = items[(page - 1) * per_page : page * per_page]
+        return httpx.Response(200, json={"total_count": len(items), "items": chunk})
+
+    return handler

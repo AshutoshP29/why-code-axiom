@@ -198,12 +198,37 @@ def test_waits_as_long_as_the_provider_asks():
     assert slept == [45.0]
 
 
-def test_provider_wait_is_capped():
+def test_rate_limit_longer_than_max_wait_switches_the_provider_off_for_that_long():
+    now = [0.0]
+    gemini = FakeProvider(
+        "gemini", "g", [StatusError(503), '{"a": 1}', StatusError(503), '{"a": 2}']
+    )
+    groq = FakeProvider("groq", "q", [rate_limited(900), '{"back": 1}'])
+    slept = []
+    client = LLMClient(
+        [gemini, groq],
+        MemoryLLMCache(),
+        Budget(10),
+        backoff_s=5,
+        max_wait_s=120,
+        sleep=slept.append,
+        clock=lambda: now[0],
+    )
+    assert ask(client, "1").provider == "gemini"
+    assert slept == [5.0]  # the normal backoff, not 900s and not the 120s cap
+    assert client.tripped == {"groq"}
+    assert ask(client, "2").provider == "gemini"
+    assert len(groq.calls) == 1  # no call spent on groq while it is off
+    now[0] = 901.0
+    assert client.tripped == set()
+
+
+def test_rate_limit_within_max_wait_keeps_the_provider_on():
     client, _, _, slept = make(
-        [StatusError(503), '{"ok": 1}'], [rate_limited(900)], backoff_s=5, max_wait_s=120
+        [StatusError(503), '{"ok": 1}'], [rate_limited(100)], backoff_s=5, max_wait_s=120
     )
     ask(client)
-    assert slept == [120.0]
+    assert slept == [100.0] and client.tripped == set()
 
 
 def test_failure_message_includes_short_provider_text():
@@ -229,11 +254,20 @@ def test_breaker_streak_resets_on_success():
     assert client.tripped == set() and len(gemini.calls) == 3
 
 
-def test_rate_limits_never_trip_the_breaker():
-    client, _, groq, _ = make([StatusError(429)] * 4, ['{"a": 1}'] * 4)
+def test_rate_limits_with_successes_between_never_trip_the_breaker():
+    gemini = [StatusError(429), StatusError(429), '{"ok": 1}'] * 2
+    client, _, groq, _ = make(gemini, ['{"a": 1}'] * 4)
     for i in range(4):
         ask(client, str(i))
     assert client.tripped == set()
+
+
+def test_used_up_quota_with_no_hint_switches_the_provider_off_after_three():
+    # Gemini's "exceeded your current quota" 429 carries no retry-after.
+    client, gemini, groq, _ = make([StatusError(429)] * 9, ['{"a": 1}'] * 9)
+    for i in range(5):
+        assert ask(client, str(i)).provider == "groq"
+    assert len(gemini.calls) == 3 and client.tripped == {"gemini"}
 
 
 def test_all_providers_tripped_fails_fast_without_calls():
@@ -251,3 +285,47 @@ def test_too_large_is_reported_in_error_reasons():
     with pytest.raises(LLMError) as info:
         ask(client)
     assert info.value.reasons == ("too_large", "too_large") and slept == []
+
+
+def test_breaker_lets_a_provider_back_in_after_the_cooldown():
+    now = [0.0]
+    gemini = FakeProvider("gemini", "g", [StatusError(503), StatusError(503), '{"back": 1}'])
+    groq = FakeProvider("groq", "q", ['{"a": 1}', '{"a": 2}', '{"a": 3}'])
+    client = LLMClient(
+        [gemini, groq], MemoryLLMCache(), Budget(20), cooldown_s=600, clock=lambda: now[0]
+    )
+    ask(client, "1")
+    ask(client, "2")
+    assert client.tripped == {"gemini"}
+    ask(client, "3")  # still cooling down: gemini is not asked
+    assert len(gemini.calls) == 2
+    now[0] = 601.0
+    assert client.tripped == set()
+    assert ask(client, "4").provider == "gemini"  # recovered
+
+
+def test_after_the_cooldown_one_more_failure_switches_it_off_again():
+    now = [0.0]
+    gemini = FakeProvider("gemini", "g", [StatusError(503)] * 3)
+    client = LLMClient(
+        [gemini, FakeProvider("groq", "q")], MemoryLLMCache(), Budget(20), clock=lambda: now[0]
+    )
+    ask(client, "1")
+    ask(client, "2")
+    now[0] = 601.0
+    ask(client, "3")
+    assert client.tripped == {"gemini"} and len(gemini.calls) == 3
+
+
+def test_all_switched_off():
+    client = LLMClient(
+        [FakeProvider("gemini", "g", [StatusError(503)] * 9)],
+        MemoryLLMCache(),
+        Budget(20),
+        backoff_s=0,
+        sleep=lambda s: None,
+    )
+    assert not client.all_switched_off()
+    with pytest.raises(LLMError):
+        ask(client, "1")
+    assert client.all_switched_off()

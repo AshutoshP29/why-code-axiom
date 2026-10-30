@@ -55,7 +55,7 @@ export interface Entity {
   id: string
   kind: EntityKind
   name: string // "rebuild_auth"
-  qualified_name: string // "Session.rebuild_auth"
+  qualified_name: string // "SessionRedirectMixin.rebuild_auth"
   path: string | null // "src/requests/sessions.py"
 }
 
@@ -97,10 +97,12 @@ export interface Decision {
   id: string
   summary: string
   rationale: string
+  alternatives: string[] // options considered and not chosen; [] when none were recorded
   decided_at: string // ISO date
   status: DecisionStatus // status today, not as of any earlier date
   evidence_kind: 'EXPLICIT' | 'INFERRED'
   proposed_by: string | null // login
+  approved_by: string[] // logins of everyone who approved it: who merged it and each approving reviewer
   reviewed_by: string | null
   source: SourceRef
 }

@@ -1,6 +1,10 @@
 // Sample data that mirrors the Figma designs, so the screens work before the API exists.
-// Every person, number and decision here is made up. Links open real GitHub searches in
-// psf/requests rather than invented PR pages. The UI shows "Sample data" while this is in use.
+// Two items are real, as the graph holds them: the answer for Response.apparent_encoding (PR #5797
+// replaced chardet with charset_normalizer) and the refusal for check_compatibility (changed by the
+// PR's commit 3e798b9, with no recorded reason). Their people, dates, quotes and links are real.
+// Everything else (the maintainer_* people, other PRs, issues and commits) is made up, and its links
+// open GitHub searches rather than invented pages. Scores and counts are made up throughout.
+// Every id is built the way whycode/ids.py builds it. The UI shows "Sample data" while this is in use.
 
 import type {
   Answer,
@@ -46,15 +50,47 @@ const issue = (n: number, term: string): SourceRef => ({
   label: `Issue #${n}`,
   url: search(term, 'issues'),
 })
-const commit = (sha: string, term: string): SourceRef => ({
-  id: id('commit', sha),
-  label: `Commit ${sha}`,
+/** Invented commits. Ids carry the full 40-character sha, as in the graph; screens show the first 7. */
+const FULL_SHA: Record<string, string> = {
+  a1b2c3d: 'a1b2c3daf81ce2c3d2d61bef8cd2dfa780e9cab2',
+  c1d4a99: 'c1d4a998d940813fa6150f29a6c3c92998854065',
+  '4b7e2d1': '4b7e2d11d65fa1c3b33418784fc0e2c428187950',
+  d7a3f10: 'd7a3f1016b0f70cd8ec7b0b65de30e759309f2b2',
+  f3e91c2: 'f3e91c27d0502053d2700037d9d41fe4cb965ca9',
+  b82d7e0: 'b82d7e05c6446873edb555fce5dc470ad5a10a61',
+  '9e0f5b1': '9e0f5b13f0e228a2e19074d2b8063eb024bc8242',
+  '7d3e1aa': '7d3e1aa72765f4db397e58ff21d75ece1ab5a506',
+  '5c8f0e2': '5c8f0e2d5a46bbeb80d24138d0c9d2552d72b33b',
+  '0b9d7c4': '0b9d7c433279465671fe579d0fb5035ae7ab8277',
+  '2e6a9f3': '2e6a9f39d07dc50a99667e1bed31ecb5a7f7c68f',
+  '3c9b2e7': '3c9b2e7ea5c00e182155e3358d8333d6390a8f5c',
+}
+
+function fullSha(short: string): string {
+  const sha = FULL_SHA[short]
+  if (!sha) throw new Error(`No full sha for sample commit ${short}`)
+  return sha
+}
+
+const commit = (short: string, term: string): SourceRef => ({
+  id: id('commit', fullSha(short)),
+  label: `Commit ${short}`,
   url: search(term, 'commits'),
 })
 const code = (path: string, term: string): SourceRef => ({
   id: id('file', path),
   label: path,
   url: search(term, 'code'),
+})
+
+// The real items link to their own pages on GitHub.
+const PR_5797 = 5797
+const SWITCH_SHA = '3e798b94717918ea48a38cdc315bf47a1067cb39' // the PR's only commit
+const realPr = (n: number): SourceRef => ({ id: id('pr', String(n)), label: `PR #${n}`, url: `${GH}/pull/${n}` })
+const realCommit = (sha: string): SourceRef => ({
+  id: id('commit', sha),
+  label: `Commit ${sha.slice(0, 7)}`,
+  url: `${GH}/commit/${sha}`,
 })
 
 // ---------- entities ----------
@@ -78,21 +114,26 @@ function cfg(path: string, key: string, qualified = key): Entity {
   return { id: id('cfg', key), kind: 'config', name: key, qualified_name: qualified, path }
 }
 
+const INIT = 'src/requests/__init__.py'
 const SESSIONS = 'src/requests/sessions.py'
 const ADAPTERS = 'src/requests/adapters.py'
 const AUTH = 'src/requests/auth.py'
 const MODELS = 'src/requests/models.py'
 const UTILS = 'src/requests/utils.py'
 
+// Function and class names are the ones in psf/requests, as whycode/code/entities.py parses them.
 export const E = {
+  init: file(INIT),
   sessions: file(SESSIONS),
   adapters: file(ADAPTERS),
   auth: file(AUTH),
   models: file(MODELS),
   utils: file(UTILS),
+  checkCompatibility: fn(INIT, 'check_compatibility'),
   sessionClass: cls(SESSIONS, 'Session'),
-  rebuildAuth: fn(SESSIONS, 'Session.rebuild_auth'),
-  resolveRedirects: fn(SESSIONS, 'Session.resolve_redirects'),
+  // The redirect methods live on the mixin that Session inherits from, not on Session itself.
+  rebuildAuth: fn(SESSIONS, 'SessionRedirectMixin.rebuild_auth'),
+  resolveRedirects: fn(SESSIONS, 'SessionRedirectMixin.resolve_redirects'),
   mergeEnv: fn(SESSIONS, 'Session.merge_environment_settings'),
   trustEnv: cfg(SESSIONS, 'trust_env', 'Session.trust_env'),
   verify: cfg(SESSIONS, 'verify'),
@@ -103,7 +144,8 @@ export const E = {
   timeout: cfg(ADAPTERS, 'timeout'),
   basicAuth: fn(AUTH, 'HTTPBasicAuth.__call__'),
   digestHeader: fn(AUTH, 'HTTPDigestAuth.build_digest_header'),
-  encoding: fn(MODELS, 'Response.encoding'),
+  apparentEncoding: fn(MODELS, 'Response.apparent_encoding'),
+  text: fn(MODELS, 'Response.text'),
   iterContent: fn(MODELS, 'Response.iter_content'),
   json: fn(MODELS, 'Response.json'),
   netrc: fn(UTILS, 'get_netrc_auth'),
@@ -130,8 +172,9 @@ export const EXPLORER: Explorer = {
       item(E.mergeEnv, 2),
       item(E.trustEnv, 1),
     ]),
-    item(E.models, 4, false, [item(E.encoding, 2), item(E.iterContent, 1), item(E.json, 1)]),
+    item(E.models, 5, false, [item(E.apparentEncoding, 1), item(E.text, 2), item(E.iterContent, 1), item(E.json, 1)]),
     item(E.utils, 2, false, [item(E.netrc, 1), item(E.bypassProxies, 1)]),
+    item(E.init, 0, false, [item(E.checkCompatibility, 0)]),
   ],
   config_keys: [
     item(E.maxRetries, 5, true),
@@ -249,20 +292,20 @@ export const OVERVIEW: Overview = {
     { entity: E.rebuildAuth, reversals: 3 },
     { entity: E.verify, reversals: 3 },
     { entity: E.allowRedirects, reversals: 2 },
-    { entity: E.encoding, reversals: 2 },
+    { entity: E.text, reversals: 2 },
   ],
   example_questions: [
+    { entity: E.apparentEncoding, question: 'Why does apparent_encoding use charset_normalizer?' },
     { entity: E.maxRetries, question: 'Why is max_retries off by default?' },
     { entity: E.rebuildAuth, question: 'Why does rebuild_auth strip headers?' },
-    { entity: E.verify, question: 'Why is verify=True the default?' },
     { entity: E.poolMaxsize, question: 'Why is pool_maxsize 10?' },
   ],
   showcase: [
     {
       outcome: 'answered',
-      entity: E.rebuildAuth,
-      question: 'Why does rebuild_auth strip the header?',
-      summary: 'Decision, discussion, commit and the person to ask.',
+      entity: E.apparentEncoding,
+      question: 'Why does apparent_encoding use charset_normalizer?',
+      summary: 'Decision, discussion, commit and the people to ask.',
     },
     {
       outcome: 'superseded',
@@ -278,8 +321,8 @@ export const OVERVIEW: Overview = {
     },
     {
       outcome: 'refused',
-      entity: E.poolMaxsize,
-      question: 'Why is pool_maxsize 10?',
+      entity: E.checkCompatibility,
+      question: 'Why does check_compatibility cap the charset_normalizer version?',
       summary: 'No recorded reason, so it lists facts and who to ask.',
     },
   ],
@@ -297,22 +340,28 @@ const person = (login: string, role: string, active: boolean, last_seen: string)
 
 // ---------- decisions ----------
 
+/**
+ * `key` is decision_key(source id, "extract-v2", 0) from whycode/ids.py: each sample decision is the
+ * first one extracted from its source, with the prompt version in whycode/extract/prompt.py.
+ */
 function decision(
   key: string,
-  fields: Omit<Decision, 'id' | 'evidence_kind' | 'reviewed_by'> &
-    Partial<Pick<Decision, 'evidence_kind' | 'reviewed_by'>>,
+  fields: Omit<Decision, 'id' | 'evidence_kind' | 'reviewed_by' | 'alternatives' | 'approved_by'> &
+    Partial<Pick<Decision, 'evidence_kind' | 'reviewed_by' | 'alternatives' | 'approved_by'>>,
   supersedes: LineageDecision['supersedes'] = [],
 ): LineageDecision {
   return {
     id: id('dec', key),
     evidence_kind: 'EXPLICIT',
     reviewed_by: null,
+    alternatives: [], // none recorded
+    approved_by: [],
     ...fields,
     supersedes,
   }
 }
 
-const RA1 = decision('ra1', {
+const RA1 = decision('1c247d00b677b378', {
   summary: 'Forward the header on every redirect',
   rationale: 'Redirects were treated as part of the same request, so auth went along unchanged.',
   decided_at: '2012-11-02',
@@ -323,7 +372,7 @@ const RA1 = decision('ra1', {
 })
 
 const RA2 = decision(
-  'ra2',
+  '155ebf64b6fa487c',
   {
     summary: 'Strip the Authorization header when a redirect changes host',
     rationale:
@@ -333,11 +382,13 @@ const RA2 = decision(
     proposed_by: 'maintainer_a',
     reviewed_by: 'maintainer_b',
     source: pr(1565, 'rebuild_auth'),
+    alternatives: ['Strip the header on every redirect, even to the same host', 'Keep the header and leave it to the caller'],
+    approved_by: ['maintainer_b', 'maintainer_c'],
   },
   [{ decision_id: RA1.id, kind: 'replaces' }],
 )
 
-const MR1 = decision('mr1', {
+const MR1 = decision('3bf1fc9dfbee99f0', {
   summary: 'Retry failed requests up to 10 times',
   rationale: 'Default of 10 retries chosen to hide flaky networks.',
   decided_at: '2012-06-04',
@@ -347,7 +398,7 @@ const MR1 = decision('mr1', {
 })
 
 const MR2 = decision(
-  'mr2',
+  '4acafa2cdf3e5064',
   {
     summary: 'Cap retries at 3 and add backoff',
     rationale: 'Limit lowered after retry storms; backoff introduced for connection errors only.',
@@ -355,12 +406,13 @@ const MR2 = decision(
     status: 'PARTIAL',
     proposed_by: 'maintainer_b',
     source: pr(1830, 'max_retries backoff'),
+    approved_by: ['maintainer_a'],
   },
   [{ decision_id: MR1.id, kind: 'replaces' }],
 )
 
 const MR3 = decision(
-  'mr3',
+  'd51e4a05c292ace2',
   {
     summary: 'Retries off by default, opt in with a Retry object',
     rationale: 'Silent retries caused duplicate side effects on non-idempotent calls.',
@@ -369,11 +421,13 @@ const MR3 = decision(
     proposed_by: 'maintainer_c',
     reviewed_by: 'maintainer_b',
     source: pr(5012, 'max_retries Retry'),
+    alternatives: ['Retry only idempotent methods by default', 'Keep 3 retries and document the risk'],
+    approved_by: ['maintainer_b'],
   },
   [{ decision_id: MR2.id, kind: 'refines' }],
 )
 
-const V1 = decision('v1', {
+const V1 = decision('97486b58f76a530c', {
   summary: 'Verify TLS certificates by default',
   rationale:
     'Unchecked certificates let a man-in-the-middle pass silently, so callers who need to skip the check must say verify=False.',
@@ -382,10 +436,12 @@ const V1 = decision('v1', {
   proposed_by: 'maintainer_a',
   reviewed_by: 'maintainer_c',
   source: pr(300, 'verify certificates default'),
+  alternatives: ['Warn about unverified certificates instead of failing'],
+  approved_by: ['maintainer_c'],
 })
 
 // The hedged sample: the reason is only inferred, from one commit message and nothing else.
-const T1 = decision('t1', {
+const T1 = decision('3e429f501fd9e9ec', {
   summary: 'Leave timeouts to the caller',
   rationale: 'Inferred from a commit message: a fixed default would cut off slow downloads that are still working.',
   decided_at: '2013-08-19',
@@ -393,6 +449,21 @@ const T1 = decision('t1', {
   evidence_kind: 'INFERRED',
   proposed_by: 'maintainer_b',
   source: commit('d7a3f10', 'timeout'),
+})
+
+// Real: decision 11 of those the graph recorded from PR #5797, decided (merged) on 2021-07-06.
+// Decision 0 from the same PR is a different one (adding a requests[lgpl] extra).
+const AE1 = decision('89ca71956b80d160', {
+  summary: 'Replace chardet (LGPL) with charset_normalizer (MIT)',
+  rationale:
+    'With an LGPL dependency it was unclear whether projects that bundle requests into one binary must be LGPL too, and the Apache Software Foundation cannot depend on LGPL code. charset_normalizer is MIT licensed; chardet is still used first if it is installed.',
+  decided_at: '2021-07-06',
+  status: 'ACTIVE',
+  proposed_by: 'ashb',
+  reviewed_by: 'sigmavirus24',
+  // Who merged the PR, then each approving review in order, as whycode/graph/build.py records them.
+  approved_by: ['sigmavirus24', 'Ousret', 'mik-laj', 'kaxil', 'sethmlarson', 'nateprewitt'],
+  source: realPr(PR_5797),
 })
 
 const withoutEdges = ({ supersedes: _ignored, ...d }: LineageDecision): Decision => d
@@ -420,9 +491,89 @@ const node = (
 
 const edge = (from: string, to: string, label: string): GraphEdge => ({ from, to, label })
 
+// Real, apart from the scores: the graph's answer for Response.apparent_encoding.
+const APPARENT_ENCODING: AnsweredAnswer = {
+  verdict: 'answered',
+  question: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?',
+  entity: E.apparentEncoding,
+  matched_by: 'selected',
+  match_score: null,
+  confidence: 0.88,
+  thresholds: THRESHOLDS,
+  partial_history: false,
+  answer_text:
+    'Because chardet is LGPL licensed. Projects that bundle requests into a single binary could not tell whether the result had to be LGPL too, and the Apache Software Foundation does not allow a required LGPL dependency. charset_normalizer is MIT licensed, so requests switched to it in 2021, and still uses chardet first when it is installed.',
+  decision: withoutEdges(AE1),
+  superseded: [],
+  evidence_chain: [
+    {
+      kind: 'discussion',
+      title: "PR #5797: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      excerpt:
+        '"By changing out this dependency for one under MIT we remove all license ambiguity." chardet stays as an escape hatch: it is used first if it is installed.',
+      meta: ['2021-04-22 to 07-06', '105 comments', 'opened by @ashb'],
+      source: { id: id('ev', `pr:${PR_5797}:body`), label: `PR #${PR_5797}`, url: `${GH}/pull/${PR_5797}` },
+    },
+    {
+      kind: 'discussion',
+      title: 'PR #5797: comment by @Ousret',
+      excerpt:
+        '"I have re-run all the tests proposed by the community, including mine" … "Everything is OK. Sames conclusion, all around ~80% compatibility." The tests compare what charset_normalizer detects with what chardet detects.',
+      meta: ['2021-05-17', '@Ousret'],
+      source: {
+        id: id('ev', `pr:${PR_5797}:ic:842306896`),
+        label: `PR #${PR_5797} comment`,
+        url: `${GH}/pull/${PR_5797}#issuecomment-842306896`,
+      },
+    },
+    {
+      kind: 'commit',
+      title: "3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      excerpt: 'The only commit in the PR. Its message gives the same licence reason and keeps chardet in use when it is installed.',
+      meta: ['2021-07-06', '@ashb', '10 files'],
+      source: realCommit(SWITCH_SHA),
+    },
+    {
+      kind: 'code',
+      title: 'models.py › Response.apparent_encoding()',
+      excerpt:
+        'Changed by the commit above (+1 / -1). It calls chardet.detect(), and compat.py binds that name to chardet if it is installed, otherwise to charset_normalizer.',
+      meta: [MODELS],
+      source: { id: E.apparentEncoding.id, label: MODELS, url: `${GH}/blob/main/${MODELS}` },
+    },
+  ],
+  who_to_ask: [
+    person('ashb', 'Proposed the decision', false, '2021-07-06'),
+    person('nateprewitt', 'Approved it', true, '2026-08-25'),
+    person('sigmavirus24', 'Approved and merged it', true, '2026-05-31'),
+  ],
+  confidence_factors: [
+    { label: 'Entity match', value: 0.96, display: '96%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.92, display: '92%', tone: 'good' },
+    { label: 'Independent sources', value: 1, display: '3 of 3', tone: 'good' },
+    { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
+  ],
+  graph: {
+    nodes: [
+      node(AE1.id, 'decision', 'Replace chardet', { center: true, url: AE1.source.url }),
+      node(E.apparentEncoding.id, 'entity', 'Response.apparent_encoding', { entity_id: E.apparentEncoding.id }),
+      node(id('pr', String(PR_5797)), 'pull_request', `PR #${PR_5797}`, { url: realPr(PR_5797).url }),
+      node(id('commit', SWITCH_SHA), 'commit', SWITCH_SHA.slice(0, 7), { url: realCommit(SWITCH_SHA).url }),
+      node(E.checkCompatibility.id, 'entity', 'requests.check_compatibility', { entity_id: E.checkCompatibility.id }),
+    ],
+    edges: [
+      edge(AE1.id, E.apparentEncoding.id, 'AFFECTS'),
+      edge(AE1.id, id('pr', String(PR_5797)), 'DECIDED_IN'),
+      edge(id('pr', String(PR_5797)), id('commit', SWITCH_SHA), 'CONTAINS'),
+      edge(id('commit', SWITCH_SHA), E.apparentEncoding.id, 'MODIFIES'),
+      edge(id('commit', SWITCH_SHA), E.checkCompatibility.id, 'MODIFIES'),
+    ],
+  },
+}
+
 const REBUILD_AUTH: AnsweredAnswer = {
   verdict: 'answered',
-  question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?',
+  question: 'Why does rebuild_auth strip the Authorization header on redirect?',
   entity: E.rebuildAuth,
   matched_by: 'selected',
   match_score: null,
@@ -458,7 +609,7 @@ const REBUILD_AUTH: AnsweredAnswer = {
     },
     {
       kind: 'code',
-      title: 'sessions.py › Session.rebuild_auth()',
+      title: 'sessions.py › SessionRedirectMixin.rebuild_auth()',
       excerpt: 'Function changed by the commit above. Later edits (2019, 2023) did not alter the rule.',
       meta: ['last touched 2023-06'],
       source: code(SESSIONS, 'def rebuild_auth'),
@@ -477,21 +628,21 @@ const REBUILD_AUTH: AnsweredAnswer = {
   graph: {
     nodes: [
       node(RA2.id, 'decision', 'Strip auth on host change', { center: true, url: RA2.source.url }),
-      node(E.rebuildAuth.id, 'entity', 'Session.rebuild_auth', { entity_id: E.rebuildAuth.id }),
-      node(E.resolveRedirects.id, 'entity', 'Session.resolve_redirects', {
+      node(E.rebuildAuth.id, 'entity', 'SessionRedirectMixin.rebuild_auth', { entity_id: E.rebuildAuth.id }),
+      node(E.resolveRedirects.id, 'entity', 'SessionRedirectMixin.resolve_redirects', {
         entity_id: E.resolveRedirects.id,
       }),
-      node('pr-1565', 'pull_request', 'PR #1565', { url: pr(1565, 'rebuild_auth').url }),
-      node('issue-812', 'issue', 'Issue #812', { url: issue(812, 'redirect').url }),
-      node('commit-a1b2c3d', 'commit', 'a1b2c3d', { url: commit('a1b2c3d', 'rebuild_auth').url }),
+      node(id('pr', '1565'), 'pull_request', 'PR #1565', { url: pr(1565, 'rebuild_auth').url }),
+      node(id('issue', '812'), 'issue', 'Issue #812', { url: issue(812, 'redirect').url }),
+      node(id('commit', fullSha('a1b2c3d')), 'commit', 'a1b2c3d', { url: commit('a1b2c3d', 'rebuild_auth').url }),
       node(RA1.id, 'decision', 'Forward on every redirect', { dimmed: true, url: RA1.source.url }),
     ],
     edges: [
       edge(RA2.id, E.rebuildAuth.id, 'AFFECTS'),
       edge(RA2.id, E.resolveRedirects.id, 'AFFECTS'),
-      edge(RA2.id, 'pr-1565', 'DECIDED_IN'),
-      edge('pr-1565', 'issue-812', 'CLOSES'),
-      edge(RA2.id, 'commit-a1b2c3d', 'SUPPORTED_BY'),
+      edge(RA2.id, id('pr', '1565'), 'DECIDED_IN'),
+      edge(id('pr', '1565'), id('issue', '812'), 'CLOSES'),
+      edge(RA2.id, id('commit', fullSha('a1b2c3d')), 'SUPPORTED_BY'),
       edge(RA2.id, RA1.id, 'SUPERSEDES'),
     ],
   },
@@ -555,16 +706,16 @@ const MAX_RETRIES: AnsweredAnswer = {
       node(MR3.id, 'decision', 'Off by default', { center: true, url: MR3.source.url }),
       node(E.maxRetries.id, 'entity', 'max_retries', { entity_id: E.maxRetries.id }),
       node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
-      node('pr-5012', 'pull_request', 'PR #5012', { url: pr(5012, 'max_retries').url }),
-      node('issue-4991', 'issue', 'Issue #4991', { url: issue(4991, 'retry').url }),
+      node(id('pr', '5012'), 'pull_request', 'PR #5012', { url: pr(5012, 'max_retries').url }),
+      node(id('issue', '4991'), 'issue', 'Issue #4991', { url: issue(4991, 'retry').url }),
       node(MR2.id, 'decision', 'Cap at 3 with backoff', { url: MR2.source.url }),
       node(MR1.id, 'decision', 'Retry up to 10 times', { dimmed: true, url: MR1.source.url }),
     ],
     edges: [
       edge(MR3.id, E.maxRetries.id, 'AFFECTS'),
       edge(MR3.id, E.send.id, 'AFFECTS'),
-      edge(MR3.id, 'pr-5012', 'DECIDED_IN'),
-      edge('pr-5012', 'issue-4991', 'CLOSES'),
+      edge(MR3.id, id('pr', '5012'), 'DECIDED_IN'),
+      edge(id('pr', '5012'), id('issue', '4991'), 'CLOSES'),
       edge(MR3.id, MR2.id, 'SUPERSEDES'),
       edge(MR2.id, MR1.id, 'SUPERSEDES'),
     ],
@@ -631,14 +782,14 @@ const VERIFY: AnsweredAnswer = {
       node(E.mergeEnv.id, 'entity', 'Session.merge_environment_settings', {
         entity_id: E.mergeEnv.id,
       }),
-      node('pr-300', 'pull_request', 'PR #300', { url: pr(300, 'verify').url }),
-      node('issue-271', 'issue', 'Issue #271', { url: issue(271, 'certificate').url }),
+      node(id('pr', '300'), 'pull_request', 'PR #300', { url: pr(300, 'verify').url }),
+      node(id('issue', '271'), 'issue', 'Issue #271', { url: issue(271, 'certificate').url }),
     ],
     edges: [
       edge(V1.id, E.verify.id, 'AFFECTS'),
       edge(V1.id, E.mergeEnv.id, 'AFFECTS'),
-      edge(V1.id, 'pr-300', 'DECIDED_IN'),
-      edge('pr-300', 'issue-271', 'CLOSES'),
+      edge(V1.id, id('pr', '300'), 'DECIDED_IN'),
+      edge(id('pr', '300'), id('issue', '271'), 'CLOSES'),
     ],
   },
 }
@@ -689,65 +840,61 @@ const TIMEOUT: HedgedAnswer = {
       node(T1.id, 'decision', 'Leave timeouts to the caller', { center: true, url: T1.source.url }),
       node(E.timeout.id, 'entity', 'timeout', { entity_id: E.timeout.id }),
       node(E.send.id, 'entity', 'HTTPAdapter.send', { entity_id: E.send.id }),
-      node('commit-d7a3f10', 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
+      node(id('commit', fullSha('d7a3f10')), 'commit', 'd7a3f10', { url: commit('d7a3f10', 'timeout').url }),
     ],
     edges: [
       edge(T1.id, E.timeout.id, 'AFFECTS'),
       edge(T1.id, E.send.id, 'AFFECTS'),
-      edge(T1.id, 'commit-d7a3f10', 'SUPPORTED_BY'),
+      edge(T1.id, id('commit', fullSha('d7a3f10')), 'SUPPORTED_BY'),
     ],
   },
 }
 
-const POOL_MAXSIZE: RefusedAnswer = {
+// Real, apart from the scores: the graph has a commit that changed check_compatibility, but no
+// decision that affects it, so it gives that fact and no reason (as whycode/graph/queries.py does).
+const CHECK_COMPATIBILITY: RefusedAnswer = {
   verdict: 'refused',
-  question: 'Why is HTTPAdapter.pool_maxsize 10 by default?',
-  entity: E.poolMaxsize,
+  question: 'Why does check_compatibility cap the charset_normalizer version?',
+  entity: E.checkCompatibility,
   matched_by: 'selected',
   match_score: null,
-  confidence: 0.18,
+  confidence: 0.12,
   thresholds: THRESHOLDS,
   partial_history: false,
   reason:
-    'The graph has no decision, discussion or incident that explains this value. Giving a reason would mean guessing, so WhyCode will not. Here is what it can show instead.',
+    'The graph has no recorded decision for check_compatibility. It knows which commit changed it, but those are facts, not reasons, so WhyCode will not guess why. Here is what it can show instead.',
   known_facts: [
     {
-      title: 'Introduced in commit e4f5a6b, 2012-05-02',
-      detail: 'Message: "Add connection pooling". No pull request or issue is linked to it.',
-      meta: ['@maintainer_a'],
-      source: commit('e4f5a6b', 'connection pooling'),
-    },
-    {
-      title: 'Value unchanged since',
-      detail:
-        'Three later commits touched the line (formatting, rename, type hints). None changed the number or explained it.',
-      meta: ['3 commits, 2013 to 2022'],
-      source: commit('pool_maxsize', 'pool_maxsize'),
+      title: "Commit 3e798b9: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      detail: 'changed it: +14 / -6 lines',
+      meta: ['2021-07-06', '@ashb'],
+      source: realCommit(SWITCH_SHA),
     },
   ],
   related: [
     {
-      title: 'PR #2210: make pool size configurable from the Session',
-      match_score: 0.31,
-      source: pr(2210, 'pool_maxsize'),
+      title: "PR #5797: Switch LGPL'd chardet for MIT licensed charset_normalizer",
+      match_score: 0.36,
+      source: realPr(PR_5797),
     },
   ],
-  history_url: `${GH}/commits/main/${ADAPTERS}`,
-  who_to_ask: [person('maintainer_a', 'Wrote the line', true, '2025-09-01')],
+  history_url: `${GH}/commits/main/${INIT}`,
+  who_to_ask: [person('ashb', 'Last changed it', false, '2021-07-06')],
   confidence_factors: [
-    { label: 'Entity match', value: 0.92, display: '92%', tone: 'good' },
-    { label: 'Evidence directness', value: 0.06, display: '6%', tone: 'bad' },
-    { label: 'Independent sources', value: 0.02, display: '0 of 2 needed', tone: 'bad' },
+    { label: 'Entity match', value: 0.96, display: '96%', tone: 'good' },
+    { label: 'Evidence directness', value: 0.05, display: '5%', tone: 'bad' },
+    { label: 'Independent sources', value: 0, display: '0 of 2 needed', tone: 'bad' },
     { label: 'Supersession resolved', value: 1, display: 'Not applicable', tone: 'neutral' },
   ],
 }
 
 export const ANSWERS: Record<string, Answer> = {
+  [E.apparentEncoding.id]: APPARENT_ENCODING,
   [E.rebuildAuth.id]: REBUILD_AUTH,
   [E.maxRetries.id]: MAX_RETRIES,
   [E.verify.id]: VERIFY,
   [E.timeout.id]: TIMEOUT,
-  [E.poolMaxsize.id]: POOL_MAXSIZE,
+  [E.checkCompatibility.id]: CHECK_COMPATIBILITY,
 }
 
 /** What the API says for an item the sample data knows nothing about. */
@@ -805,15 +952,25 @@ export function noMatchRefusal(question: string, related: RelatedItem[]): Refuse
 // ---------- lineage ----------
 
 const lineageCommit = (
-  sha: string,
+  short: string,
   date: string,
   message: string,
   decision: LineageDecision | null,
 ): LineageCommit => ({
-  sha,
+  sha: fullSha(short),
   date,
   message,
-  url: search(sha, 'commits'),
+  url: search(short, 'commits'),
+  decision_id: decision?.id ?? null,
+})
+
+// The commit the graph has for both real items. It is linked to a decision only where the
+// decision affects the item: Response.apparent_encoding, not check_compatibility.
+const switchCommit = (decision: LineageDecision | null): LineageCommit => ({
+  sha: SWITCH_SHA,
+  date: '2021-07-06',
+  message: "Switch LGPL'd chardet for MIT licensed charset_normalizer",
+  url: realCommit(SWITCH_SHA).url,
   decision_id: decision?.id ?? null,
 })
 
@@ -825,6 +982,19 @@ interface LineageSample {
 }
 
 export const LINEAGES: Record<string, LineageSample> = {
+  // Real: the PR #5797 slice of the graph has one commit for each of these.
+  [E.apparentEncoding.id]: {
+    as_of_years: [],
+    decisions: [AE1],
+    commits: [switchCommit(AE1)],
+    commit_total: 1,
+  },
+  [E.checkCompatibility.id]: {
+    as_of_years: [],
+    decisions: [],
+    commits: [switchCommit(null)],
+    commit_total: 1,
+  },
   [E.maxRetries.id]: {
     as_of_years: [2013, 2016],
     decisions: [MR1, MR2, MR3],
@@ -929,10 +1099,10 @@ const notRun = { llm_only: null, vector_rag: null, whycode: null }
 export const EVALUATION: Evaluation = {
   ...HEALTH.evaluation,
   questions: [
-    { id: 'q01', question: 'Why does Session.rebuild_auth strip the Authorization header on redirect?', entity: E.rebuildAuth, expected: 'answered', results: notRun },
+    { id: 'q01', question: 'Why does Response.apparent_encoding use charset_normalizer instead of chardet?', entity: E.apparentEncoding, expected: 'answered', results: notRun },
     { id: 'q02', question: 'Why is max_retries off by default?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q03', question: 'Why is verify=True the default?', entity: E.verify, expected: 'answered', results: notRun },
-    { id: 'q04', question: 'Why is HTTPAdapter.pool_maxsize 10 by default?', entity: E.poolMaxsize, expected: 'refused', results: notRun },
+    { id: 'q04', question: 'Why does check_compatibility cap the charset_normalizer version?', entity: E.checkCompatibility, expected: 'refused', results: notRun },
     { id: 'q05', question: 'What was the retry rule in 2013?', entity: E.maxRetries, expected: 'superseded', results: notRun },
     { id: 'q06', question: 'Why does trust_env read proxy settings from the environment?', entity: E.trustEnv, expected: 'refused', results: notRun },
     { id: 'q07', question: 'Why is .netrc read when no auth is passed?', entity: E.netrc, expected: 'refused', results: notRun },

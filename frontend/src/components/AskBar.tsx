@@ -44,7 +44,8 @@ export function AskBar({
       aria-label="Ask why"
       onSubmit={submit}
       className={cx(
-        'flex min-w-0 items-center gap-2 rounded-xl border bg-sunken focus-within:border-teal/70',
+        // Wraps on a narrow screen, so a long picked name cannot squeeze the question box to nothing.
+        'flex min-w-0 flex-wrap items-center gap-2 rounded-xl border bg-sunken focus-within:border-teal/70',
         variant === 'hero' ? 'border-teal/40 p-2.5 pl-3.5' : 'flex-1 border-line p-1.5 pl-2.5',
       )}
     >
@@ -66,7 +67,7 @@ export function AskBar({
         placeholder={entity ? 'then ask why it is this way...' : 'or type a question...'}
         value={text}
         onChange={(e) => setText(e.target.value)}
-        className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
+        className="min-w-32 flex-1 bg-transparent text-sm outline-none placeholder:text-faint"
       />
       <Button
         type="submit"

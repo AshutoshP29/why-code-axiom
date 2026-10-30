@@ -32,17 +32,19 @@ describe('class entities', () => {
 
 describe('entity names', () => {
   it('shows methods and settings by qualified name', () => {
-    expect(entityLabel(E.rebuildAuth)).toBe('Session.rebuild_auth')
+    expect(entityLabel(E.rebuildAuth)).toBe('SessionRedirectMixin.rebuild_auth')
     expect(entityLabel(E.poolMaxsize)).toBe('HTTPAdapter.pool_maxsize')
     expect(entityLabel(E.maxRetries)).toBe('max_retries')
   })
 
   it('prefixes module-level functions with their module', () => {
     expect(entityLabel(E.netrc)).toBe('utils.get_netrc_auth')
+    // A package's __init__.py is the package itself.
+    expect(entityLabel(E.checkCompatibility)).toBe('requests.check_compatibility')
   })
 
   it('builds breadcrumbs like the designs', () => {
-    expect(entityCrumbs(E.rebuildAuth)).toEqual(['sessions.py', 'Session.rebuild_auth()'])
+    expect(entityCrumbs(E.rebuildAuth)).toEqual(['sessions.py', 'SessionRedirectMixin.rebuild_auth()'])
     expect(entityCrumbs(E.maxRetries, true)).toEqual(['config key', 'adapters.py', 'max_retries'])
   })
 

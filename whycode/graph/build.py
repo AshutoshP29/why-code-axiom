@@ -158,9 +158,8 @@ def build_pr_graph(
         owner=owner,
         name=name,
         url=f"https://github.com/{repo}",
-        status="READY",
-        stage="extract",
-        partial=True,
+        # status, stage, progress_pct and partial belong to whoever runs the ingestion
+        # (writer.set_repo_state); one PR's batch must not overwrite a run's progress.
         prompt_version=prompt_version,
         schema_version=SCHEMA_VERSION,
         last_synced_at=now,

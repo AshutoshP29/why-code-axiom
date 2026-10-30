@@ -7,10 +7,12 @@ function dec(id: string, date: string, supersedes: [string, SupersedeKind][] = [
     id,
     summary: id,
     rationale: '',
+    alternatives: [],
     decided_at: date,
     status: 'ACTIVE', // stored status is ignored; the view derives its own
     evidence_kind: 'EXPLICIT',
     proposed_by: null,
+    approved_by: [],
     reviewed_by: null,
     source: { id: `src-${id}`, label: id, url: 'https://example.invalid' },
     supersedes: supersedes.map(([decision_id, kind]) => ({ decision_id, kind })),

@@ -26,12 +26,21 @@ With `VITE_API_URL` unset, the app runs on **sample data** (`src/api/sample.ts`)
 "Sample data" badge in the top bar. No backend is needed. Every flow in the user journey works
 this way, including flagging gaps and adding a repository (a simulated 45-second ingestion).
 
-On sample data, a question asked with no entity picked is matched by the words it shares with
-entity names (`src/api/mock.ts`). Three to try from the Home ask bar:
+Two items in the sample data are real, as the graph holds them, with real people, dates and
+links: the answer for `Response.apparent_encoding` (PR #5797, which replaced chardet with
+charset_normalizer) and the refusal for `check_compatibility` (changed by that PR's commit 3e798b9,
+with no recorded reason). Everything else is made up. Every id has the form `whycode/ids.py` gives
+it, and `src/api/sample.test.ts` checks that.
 
-- "why does rebuild_auth strip the header?": matched to `Session.rebuild_auth`, answered
+On sample data, a question asked with no entity picked is matched by the words it shares with
+entity names (`src/api/mock.ts`). Four to try from the Home ask bar:
+
+- "why does apparent_encoding use charset_normalizer?": matched to `Response.apparent_encoding`,
+  answered from PR #5797
 - "why is there no default timeout?": matched to `timeout`, hedged
-- "why did requests drop chardet?": nothing matches, so it is refused with no entity
+- "why does check_compatibility cap the charset_normalizer version?": matched to
+  `requests.check_compatibility`, refused with the one fact the graph has
+- "why did requests drop python 2 support?": nothing matches, so it is refused with no entity
 
 ### Against the real API
 
@@ -95,7 +104,7 @@ The contract is `src/api/types.ts`; `src/api/http.ts` is the client. In short:
 - Every call is **scoped to one repo** (`repo=psf/requests`), matching the graph rule that every
   query filters on `repo`.
 - Ids are the graph ids from `whycode/ids.py`, for example
-  `psf/requests#fn:src/requests/sessions.py::Session.rebuild_auth`. They are URL-encoded in query
+  `psf/requests#fn:src/requests/models.py::Response.apparent_encoding`. They are URL-encoded in query
   strings.
 - Errors return an HTTP error status with a FastAPI `{"detail": "..."}` body; the detail is shown
   to the user, so it must never contain secrets.
@@ -130,13 +139,19 @@ Points worth knowing when building the backend:
   says how: `matched_by: "search"` and `match_score` (0..1), or `matched_by: "selected"` and
   `match_score: null` when the user picked it. `entity` is the matched item, and is `null` only on a
   refusal where nothing matched; answered and hedged answers always have an entity. The screen shows
-  "Matched to Session.rebuild_auth (score 0.82)"; picking a different entity asks again with its
+  "Matched to Response.apparent_encoding (score 0.82)"; picking a different entity asks again with its
   `entity_id`.
 - **Hedged answers** have every field of an answered one plus `warning`: one or two plain sentences
   on why confidence is limited, written from the confidence factors. Factors with `tone: "bad"` are
   the weak ones; the screen lists them in the warning and first under "Why only 55%?".
 - **The LLM only words `answer_text`.** Everything else on the Why Workspace comes from the graph:
   the decision, its `source`, each evidence step's `source.url`, people, and confidence factors.
+- **Every decision has `alternatives` and `approved_by`**, both lists and both `[]` when nothing
+  was recorded, never missing. `alternatives` are the options considered and not chosen; the
+  screen lists them under the decision as "Also considered". `approved_by` holds the logins of
+  everyone who approved it, which is who merged the PR and each approving reviewer, as
+  `whycode/graph/build.py` records them; the screen shows them next to "Proposed by".
+  `reviewed_by` is unchanged. If that person is also an approver, the screen names them once.
 - **Lineage time travel:** `/lineage?as_of=2016-12-31` returns only decisions and commits on or
   before that date. Each decision lists the older decisions it `supersedes` with a kind
   (`reverses`, `replaces`, `refines`). The page works out each card's status *as of that date*

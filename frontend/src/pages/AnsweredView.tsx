@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Link } from 'react-router'
 import type { AnsweredAnswer, HedgedAnswer, Person } from '../api/types'
 import {
@@ -35,6 +35,7 @@ export function AnsweredView({
   asked: string
 }) {
   const [asking, setAsking] = useState<Person | null>(null)
+  const alternativesHeading = useId() // unique even if two cards are on one page
   const hedged = answer.verdict === 'hedged'
   const d = answer.decision
   const decidedOn = d.decided_at.slice(0, 10)
@@ -75,11 +76,25 @@ export function AnsweredView({
           <p className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-faint">
             <span>Decided {decidedOn}</span>
             {d.proposed_by && <span>Proposed by @{d.proposed_by}</span>}
-            {d.reviewed_by && <span>Reviewed by @{d.reviewed_by}</span>}
+            {d.approved_by.length > 0 && <span>Approved by {d.approved_by.map((login) => `@${login}`).join(', ')}</span>}
+            {/* A reviewer who also approved is named once, as an approver. */}
+            {d.reviewed_by && !d.approved_by.includes(d.reviewed_by) && <span>Reviewed by @{d.reviewed_by}</span>}
             <a href={d.source.url} target="_blank" rel="noreferrer" className="text-blue hover:underline">
               {d.source.label}
             </a>
           </p>
+          {d.alternatives.length > 0 && (
+            <div className="mt-4 border-t border-line pt-3">
+              <SectionLabel>
+                <span id={alternativesHeading}>Also considered</span>
+              </SectionLabel>
+              <ul aria-labelledby={alternativesHeading} className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+                {d.alternatives.map((option) => (
+                  <li key={option}>{option}</li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Card>
 
         {answer.superseded.map((note) => (
