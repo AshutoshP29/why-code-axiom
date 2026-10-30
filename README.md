@@ -9,6 +9,20 @@ The graph holds the answer; the LLM only words it. When the graph has no answer,
 
 Team AXIOM, hackFront India 2026 ("AI and Developer Tools").
 
+## What the prototype holds
+
+The demo repository is [psf/requests](https://github.com/psf/requests), on Neo4j Aura:
+
+- the 62 most discussed merged pull requests (20+ comments), with their comments, reviews,
+  commits and linked issues: 181 decisions extracted by the LLM, each tied to verbatim quotes
+  (261 evidence links);
+- 10 supersession links judged between them (3 decisions superseded, 7 refined);
+- the whole code map at HEAD and the full git history, without an LLM: 1,647 files, classes,
+  functions and config keys, and 6,618 commits.
+
+How well it works is measured in [docs/evaluation.md](docs/evaluation.md) (re-run with
+`scripts/evaluate.py`, no LLM calls); [docs/demo.md](docs/demo.md) is the demo script.
+
 ## Requirements
 
 - Python 3.12 and [uv](https://docs.astral.sh/uv/)
@@ -168,9 +182,11 @@ models drift from it. CORS allows the Vite dev server (`http://localhost:5173`).
 confidence from five factors (entity match 0.25, evidence directness 0.25, independent sources
 0.20, supersession resolved 0.15, citation pass 0.15) and answers at 0.70 or more, hedges from
 0.40, and refuses below. A question whose best search match is below 0.5 is refused outright,
-with the closest items listed to pick from, so it is never answered about the wrong code.
-Flagged gaps go to the Postgres table `gaps`. `/repos/check`, `POST /repos`, `/repos/sync`,
-`/repos/reingest`, `/ingestion` and `/evaluation` return 501 for now.
+with the closest items listed to pick from, so it is never answered about the wrong code. When
+the question names code (`rebuild_method`, `Response.json`, `JSONDecodeError`), the item with that
+name is used even if a plain word in the question ("post", "get") scores higher. Flagged gaps go
+to the Postgres table `gaps`. `/repos/check`, `POST /repos`, `/repos/sync`, `/repos/reingest`,
+`/ingestion` and `/evaluation` return 501 for now.
 
 ## Tests
 
@@ -182,13 +198,26 @@ uv run pytest --cov=whycode       # with coverage
 uv run ruff check .
 ```
 
+## Evaluation
+
+```sh
+uv run python scripts/evaluate.py --repo psf/requests             # writes docs/evaluation.md
+uv run python scripts/evaluate.py --repo psf/requests --no-write  # print only
+```
+
+No LLM calls. Every code item is asked about by name through the same code as `POST /api/ask`
+(with no item picked, so search has to find it), off-topic questions are asked too, every cited
+quote is checked against the original GitHub text in Postgres, and the supersession links are
+listed for a person to check. The LLM-only and vector-RAG baselines are not measured yet.
+
 ## Layout
 
 ```
 whycode/
   config.py        settings from .env
   ids.py           make_id(repo, kind, key) -> "psf/requests#pr:1565"
-  ingest/          GitHub fetch -> Postgres raw cache; PR selection, jobs, the batch runner
+  ingest/          GitHub fetch -> Postgres raw cache; PR selection, jobs, the batch runner;
+                   codemap.py: whole-repo code map and git history from a clone
   graph/           Neo4j driver wrapper, schema runner, MERGE-only writers, supersession
     schema.cypher  the graph contract (source of truth)
   code/            tree-sitter parser: files, classes, functions, config keys
@@ -197,7 +226,8 @@ whycode/
   api/             FastAPI for the screens (the frontend contract)
   agent/           later phases
 tests/  unit/  integration/  e2e/  fixtures/
-scripts/
+scripts/           check_connections.py, apply_schema.py, evaluate.py
+docs/              evaluation.md (measured results), demo.md (demo script)
 frontend/          the screens (React + Vite); see frontend/README.md
 ```
 
@@ -207,8 +237,14 @@ frontend/          the screens (React + Vite); see frontend/README.md
 cd frontend
 npm install
 npm run dev        # http://localhost:5173 on sample data; set VITE_API_URL=/api to use the API
-npm test
+npm test           # unit tests (Vitest)
+npm run e2e        # browser tests (Playwright) in the installed Edge and Chrome
 ```
+
+To use the real API, start it first (see API) and then, in PowerShell:
+`$env:VITE_API_URL="/api"; npm run dev`. Git Bash rewrites `/api` into a Windows path
+(`C:/Program Files/Git/api`) and the screens then cannot reach the API; there, prefix the command
+with `MSYS_NO_PATHCONV=1`.
 
 `frontend/README.md` lists the screens and the API endpoints they call.
 
