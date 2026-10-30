@@ -37,8 +37,9 @@ def test_writing_twice_changes_no_count(db, tiny):
     assert repo_counts(driver, database, A) == first
     by_label, rels = first
     assert by_label == {label: len(nodes) for label, nodes in batch.nodes.items()}
-    assert rels == batch.count()[1]
-    assert "Decision" not in by_label
+    refs = sum(len(p) for (t, _, _), p in batch.rels.items() if t == "REFERENCES")
+    assert rels == batch.count()[1] - refs  # no PR is in the graph, so no REFERENCES
+    assert "Decision" not in by_label and "PullRequest" not in by_label
 
 
 def test_a_second_repo_stays_separate(db, tiny):
@@ -66,3 +67,22 @@ def test_codemap_leaves_decisions_alone(db, tiny):
     write_batch(driver, database, run_codemap(A, tiny)[0])
     by_label, _ = repo_counts(driver, database, A)
     assert by_label["Decision"] == 1
+
+
+def test_references_only_pull_requests_already_ingested(db, tiny):
+    driver, database = db
+    pr = f"{A}#pr:12"
+    with driver.session(database=database) as s:
+        s.run(
+            "MERGE (p:PullRequest {id: $id}) SET p.repo = $repo, p.number = 12, p.title = 'kept'",
+            id=pr,
+            repo=A,
+        ).consume()
+    write_batch(driver, database, run_codemap(A, tiny)[0])
+    with driver.session(database=database) as s:
+        rows = s.run(
+            "MATCH (c:Commit {repo: $repo})-[:REFERENCES]->(p:PullRequest {repo: $repo}) "
+            "RETURN p.id AS id, p.title AS title",
+            repo=A,
+        ).data()
+    assert rows == [{"id": pr, "title": "kept"}]  # "#7" is not in the graph, so not linked

@@ -264,8 +264,10 @@ def add_history(b: GraphBatch, commits: list[GitCommit]) -> HistoryStats:
     """Commit nodes and their REFERENCES, REVERTS and MODIFIES edges, from newest-first commits.
 
     REFERENCES goes to the PullRequest a "(#N)" squash subject or a "Merge pull request #N"
-    merge names (a stub node with number and url; ingestion fills in the rest). REVERTS only
-    links commits that were read. MODIFIES goes to File nodes at HEAD, with line counts.
+    merge names. No PullRequest node is created: the writer MATCHes both ends, so the edge is
+    written only for pull requests the PR ingest already holds, and the PR count it reports
+    stays the number of PRs really ingested. REVERTS only links commits that were read.
+    MODIFIES goes to File nodes at HEAD, with line counts.
     """
     repo = b.repo
     files = {props["path"]: fid for fid, props in b.nodes.get("File", {}).items()}
@@ -287,9 +289,7 @@ def add_history(b: GraphBatch, commits: list[GitCommit]) -> HistoryStats:
         merged = merge_pr_number(c.message)
         numbers = subject_pr_numbers(c.message) + ([merged] if merged is not None else [])
         for n in dict.fromkeys(numbers):
-            pr = ("PullRequest", make_id(repo, "pr", n))
-            b.node(*pr, number=n, url=f"https://github.com/{repo}/pull/{n}")
-            b.rel("REFERENCES", ref, pr)
+            b.rel("REFERENCES", ref, ("PullRequest", make_id(repo, "pr", n)))
             references += 1
         for target in _revert_targets(c, commits[i + 1 :], repo):
             b.rel("REVERTS", ref, ("Commit", make_id(repo, "commit", target)))

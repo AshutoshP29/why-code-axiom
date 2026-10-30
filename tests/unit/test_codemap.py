@@ -207,11 +207,7 @@ def test_references_from_squash_and_merge_subjects(full):
         ("Commit", cid(shas["c3"]), "PullRequest", f"{R}#pr:12"),
         ("Commit", cid(shas["c7"]), "PullRequest", f"{R}#pr:7"),
     }
-    assert b.nodes["PullRequest"][f"{R}#pr:7"] == {
-        "repo": R,
-        "number": 7,
-        "url": f"https://github.com/{R}/pull/7",
-    }
+    assert "PullRequest" not in b.nodes  # the PR ingest owns those nodes
     assert stats.references == 2
 
 
