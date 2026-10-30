@@ -5,6 +5,8 @@ summary, rationale, date and source until an LLM words it; refusal reasons are f
 query's own, never generated. Nothing here guesses why code is the way it is.
 """
 
+import re
+
 from whycode.api import models as m
 from whycode.api import reads
 from whycode.api.confidence import THRESHOLDS, Signals, factors, score, verdict, warning
@@ -256,6 +258,36 @@ def _related(hit: m.EntityMatch, repo: str) -> m.RelatedItem:
     )
 
 
+def code_names(question: str) -> list[str]:
+    """Names in the question that look like code, in order: rebuild_method, Response.json,
+    JSONDecodeError. Plain words (post, GET) are not, so they cannot outrank a real name."""
+    out = []
+    for word in re.findall(r"[A-Za-z_][\w.]*", question):
+        word = word.strip(".")
+        if "_" in word or "." in word or re.search(r"[a-z][A-Z]", word):
+            out.append(word)
+    return out
+
+
+def named_hit(question: str, hits: list[m.EntityMatch]) -> m.EntityMatch | None:
+    """The hit the question names, by the first code-like name that matches one; else None.
+
+    Search ranks short plain names high: "Why does rebuild_method turn POST into GET?" scored the
+    functions post and get above SessionRedirectMixin.rebuild_method.
+    """
+    for name in code_names(question):
+        n = name.lower()
+        named = [
+            h
+            for h in hits
+            if n in (h.name.lower(), h.qualified_name.lower())
+            or h.qualified_name.lower().endswith("." + n)
+        ]
+        if named:
+            return max(named, key=lambda h: h.score)
+    return None
+
+
 def _independent_sources(dv: DecisionView) -> int:
     """People quoted in the evidence: two comments by the same person are one source."""
     return len({ev.author or ev.id for ev in dv.evidence})
@@ -281,7 +313,7 @@ def ask(run: Run, repo: m.Repo, question: str, selected: m.Entity | None) -> m.A
             fs = factors(Signals(None, None))
             base = _base(question, None, "search", None, fs, repo, [])
             return _refused(base, NO_MATCH_REASON, [], history_url(repo.id, None))
-        top = hits[0]
+        top = named_hit(question, hits) or hits[0]
         if top.score < MIN_SEARCH_MATCH:
             fs = factors(Signals(top.score, None))
             base = _base(question, None, "search", top.score, fs, repo, [])

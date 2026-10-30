@@ -36,6 +36,14 @@ def test_repo_defaults_for_missing_fields():
     )
 
 
+def test_fractional_progress_from_the_ingestion_runner_is_rounded():
+    # whycode.ingest.run stores round(100 * done / all, 1): 61 of 62 PRs written is 98.4.
+    node = {"id": "a/b", "status": "READY", "progress_pct": 98.4}
+    graph = FakeGraph(repos=[{"r": node, "commits": 0, "decisions": 0}])
+    res = client(graph).get("/api/repos")
+    assert res.status_code == 200 and res.json()[0]["progress_pct"] == 98
+
+
 @pytest.mark.parametrize(
     ("entity_id", "kind", "name", "qualified", "path"),
     [

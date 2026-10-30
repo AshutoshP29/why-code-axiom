@@ -79,7 +79,8 @@ def _repo(row: dict) -> m.Repo:
         id=r["id"],
         status=status,
         stage=stage,
-        progress_pct=progress if progress is not None else (100 if status == "READY" else 0),
+        # The ingestion runner stores one decimal (98.4); the screens show a whole percent.
+        progress_pct=round(progress) if progress is not None else (100 if status == "READY" else 0),
         partial=bool(r.get("partial", False)),
         error=r.get("error"),
         last_synced_at=native(r.get("last_synced_at")),
