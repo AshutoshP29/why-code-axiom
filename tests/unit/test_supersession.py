@@ -80,6 +80,16 @@ def test_link_citing_the_older_decisions_evidence_is_refused():
     assert v.kind == "unrelated" and "not the newer decision's evidence" in rejected
 
 
+def test_id_copied_with_the_prompts_brackets_still_counts():
+    # The prompt lists evidence as `[id] "quote"`; models often return "[id]".
+    for eid in ("[r/x#ev:pr:1:rc:2]", ' "r/x#ev:pr:1:rc:2" ', "`r/x#ev:pr:1:rc:2`"):
+        v, rejected = check_verdict(verdict(evidence_id=eid), NEWER)
+        assert v.kind == "replaces" and rejected is None
+        assert v.evidence_id == "r/x#ev:pr:1:rc:2"  # stored without the brackets
+    v, rejected = check_verdict(verdict(evidence_id="[r/x#ev:pr:1:body]"), NEWER)
+    assert v.kind == "unrelated" and rejected  # still only the newer decision's own evidence
+
+
 def test_link_citing_an_invented_id_or_nothing_is_refused():
     for eid in ("r/x#ev:made-up", None):
         v, rejected = check_verdict(verdict(evidence_id=eid), NEWER)
