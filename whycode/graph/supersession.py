@@ -179,6 +179,9 @@ def check_verdict(raw: str, newer: DecisionInfo) -> tuple[SupersessionVerdict, s
         return SupersessionVerdict(
             kind="unrelated", confidence=0.0
         ), f"invalid JSON ({exc.error_count()} errors)"
+    if v.evidence_id:
+        # The prompt lists evidence as `[id] "quote"`, so the id often comes back bracketed.
+        v = v.model_copy(update={"evidence_id": v.evidence_id.strip().strip("[]\"'` ")})
     if v.kind != "unrelated" and v.evidence_id not in {eid for eid, _ in newer.evidence}:
         why = f"{v.kind} cited {v.evidence_id!r}, not the newer decision's evidence"
         return SupersessionVerdict(kind="unrelated", confidence=0.0), why
