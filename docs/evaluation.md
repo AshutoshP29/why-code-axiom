@@ -7,6 +7,7 @@ Measured 2026-10-30 with `scripts/evaluate.py` on the graph as it is (181 decisi
 | Named code with a decision: matched to the right item | 72/76 (95%) |
 | ... and answered | 73/76 (96%) |
 | ... answers whose every evidence step links to its source | 73/73 (100%) |
+| ... whose decision replaced an older one: answered naming the older one | 16/16 (100%) |
 | Named code no decision explains: matched | 476/481 (99%) |
 | ... refused (facts only, no reason given) | 481/481 (100%) |
 | Off-topic questions refused | 10/10 (100%) |
