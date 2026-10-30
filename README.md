@@ -185,8 +185,9 @@ confidence from five factors (entity match 0.25, evidence directness 0.25, indep
 with the closest items listed to pick from, so it is never answered about the wrong code. When
 the question names code (`rebuild_method`, `Response.json`, `JSONDecodeError`), the item with that
 name is used even if a plain word in the question ("post", "get") scores higher. Flagged gaps go
-to the Postgres table `gaps`. `/repos/check`, `POST /repos`, `/repos/sync`, `/repos/reingest`,
-`/ingestion` and `/evaluation` return 501 for now.
+to the Postgres table `gaps`. `/evaluation` (and the panel on `/health`) serves the last results
+of `scripts/evaluate.py` from `docs/evaluation.json`, or placeholders for a repo never measured.
+`/repos/check`, `POST /repos`, `/repos/sync`, `/repos/reingest` and `/ingestion` return 501 for now.
 
 ## Tests
 
@@ -201,14 +202,17 @@ uv run ruff check .
 ## Evaluation
 
 ```sh
-uv run python scripts/evaluate.py --repo psf/requests             # writes docs/evaluation.md
+uv run python scripts/evaluate.py --repo psf/requests             # writes docs/evaluation.md + .json
 uv run python scripts/evaluate.py --repo psf/requests --no-write  # print only
 ```
 
 No LLM calls. Every code item is asked about by name through the same code as `POST /api/ask`
 (with no item picked, so search has to find it), off-topic questions are asked too, every cited
 quote is checked against the original GitHub text in Postgres, and the supersession links are
-listed for a person to check. The LLM-only and vector-RAG baselines are not measured yet.
+listed for a person to check. Code whose current decision replaced an older one must be answered
+with the older one named. The 567 questions and their results also go to `docs/evaluation.json`,
+which the Graph health and Evaluation screens show. The LLM-only and vector-RAG baselines are not
+measured yet.
 
 ## Layout
 
@@ -227,7 +231,7 @@ whycode/
   agent/           later phases
 tests/  unit/  integration/  e2e/  fixtures/
 scripts/           check_connections.py, apply_schema.py, evaluate.py
-docs/              evaluation.md (measured results), demo.md (demo script)
+docs/              evaluation.md + .json (measured results), demo.md (demo script)
 frontend/          the screens (React + Vite); see frontend/README.md
 ```
 

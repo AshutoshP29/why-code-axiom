@@ -23,7 +23,7 @@ again. WhyCode turns a repository's history into a graph of decisions, each tied
 words that justify it."
 
 Point at the counts: 181 decisions from 62 of the most discussed PRs, 261 evidence links,
-1,583 code entities, 3 superseded decisions.
+1,647 code entities, 3 superseded decisions.
 
 ## 2. A real answer with its evidence (60 s)
 
@@ -61,12 +61,15 @@ Then type: **What is the capital of France? asked via requests packages**
 
 ## 5. How we know it works (30 s) - Graph health, then docs/evaluation.md
 
-- Graph health: the ingestion stages and counts.
+- Graph health: all five ingestion stages done, the counts, and the measured scores.
+- "See every question and result": all 567 questions with the right response and WhyCode's.
 - From `docs/evaluation.md` (measured with `scripts/evaluate.py`, no LLM calls):
   - 261 of 261 cited quotes found word for word in the original GitHub text.
   - 73 of 73 answers link every evidence step to its source.
   - 481 of 481 questions about code no decision explains were refused, facts only.
   - 10 of 10 off-topic questions refused.
+  - 16 of 16 questions about code whose decision replaced an older one answered with the older
+    one named.
   - 72 of 76 questions naming code matched the right item (the rest: same name in another
     file).
 
