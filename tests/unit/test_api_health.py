@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 
 import psycopg
@@ -44,6 +45,34 @@ def health_graph():
     return FakeGraph(health_counts=LABEL_COUNTS, health_links=[{"links": 12, "superseded": 0}])
 
 
+@pytest.fixture(autouse=True)
+def no_saved_evaluation(tmp_path, monkeypatch):
+    monkeypatch.setattr(reads, "EVALUATION_FILE", tmp_path / "missing.json")
+
+
+SAVED = {
+    REPO: {
+        "question_count": 2,
+        "rows": [
+            {"metric": "Correct refusals", "llm_only": None, "vector_rag": None, "whycode": 1.0}
+        ],
+        "questions": [
+            {
+                "id": "q001",
+                "question": "What is the capital of France?",
+                "entity": None,
+                "expected": "refused",
+                "results": {
+                    "llm_only": None,
+                    "vector_rag": None,
+                    "whycode": {"outcome": "refused", "correct": True, "cited_source": False},
+                },
+            }
+        ],
+    }
+}
+
+
 def test_health_counts_stages_gaps_and_evaluation():
     gaps = FakeGaps()
     gaps.add(REPO, FN, "Why apparent_encoding?")
@@ -78,6 +107,33 @@ def test_health_counts_stages_gaps_and_evaluation():
     assert h["evaluation"]["measured"] is False
     assert all(r["whycode"] is None for r in h["evaluation"]["rows"])
     assert_repo_filtered(graph)
+
+
+def test_health_and_evaluation_show_the_saved_results(tmp_path, monkeypatch):
+    path = tmp_path / "evaluation.json"
+    path.write_text(json.dumps(SAVED), encoding="utf-8")
+    monkeypatch.setattr(reads, "EVALUATION_FILE", path)
+    c = client(health_graph(), {app_module.get_gaps_or_none: lambda: None})
+    summary = c.get("/api/health", params={"repo": REPO}).json()["evaluation"]
+    assert summary == {"question_count": 2, "measured": True, "rows": SAVED[REPO]["rows"]}
+    full = c.get("/api/evaluation", params={"repo": REPO})
+    assert full.status_code == 200
+    assert full.json() == {**SAVED[REPO], "measured": True}
+
+
+def test_evaluation_of_an_unmeasured_repo_is_placeholders(tmp_path):
+    path = tmp_path / "evaluation.json"
+    path.write_text(json.dumps(SAVED), encoding="utf-8")
+    assert reads.evaluation("pallets/flask", path).measured is False
+    path.write_text("not json", encoding="utf-8")
+    e = reads.evaluation(REPO, path)
+    assert (e.measured, e.questions, e.question_count) == (False, [], 0)
+    assert [r.metric for r in e.rows] == list(reads.EVAL_METRICS)
+
+
+def test_evaluation_of_an_unknown_repo_is_404():
+    res = client(FakeGraph()).get("/api/evaluation", params={"repo": "a/b"})
+    assert res.status_code == 404
 
 
 def test_health_without_postgres_has_an_empty_gap_queue():

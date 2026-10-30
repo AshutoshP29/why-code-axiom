@@ -20,6 +20,7 @@ Tone = Literal["good", "bad", "neutral"]
 GraphNodeKind = Literal["entity", "decision", "pull_request", "issue", "commit", "person"]
 MatchedBy = Literal["selected", "search"]
 ShowcaseOutcome = Literal["answered", "superseded", "hedged", "refused"]
+ExpectedOutcome = Literal["answered", "superseded", "refused"]
 
 STAGES: tuple[Stage, ...] = ("fetch", "parse", "link", "extract", "supersession")
 
@@ -270,6 +271,24 @@ class EvaluationSummary(BaseModel):
     question_count: int
     measured: bool
     rows: list[EvalRow]
+
+
+class EvalResult(BaseModel):
+    outcome: ExpectedOutcome
+    correct: bool
+    cited_source: bool
+
+
+class EvalQuestion(BaseModel):
+    id: str
+    question: str
+    entity: Entity | None
+    expected: ExpectedOutcome
+    results: dict[Literal["llm_only", "vector_rag", "whycode"], EvalResult | None]
+
+
+class Evaluation(EvaluationSummary):
+    questions: list[EvalQuestion]
 
 
 class HealthCounts(BaseModel):

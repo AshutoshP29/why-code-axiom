@@ -58,9 +58,9 @@ export function EvaluationPage() {
         <div>
           <h1 className="text-2xl font-semibold">Evaluation</h1>
           <p className="mt-1 max-w-2xl text-sm text-muted">
-            {data.question_count} labelled questions about {repo.id}, each with a known right answer, run through
+            {data.question_count} labelled questions about {repo.id}, each with a known right answer, to run through
             a plain LLM, an LLM with vector search, and WhyCode. Some questions have no recorded reason, so the
-            right response is to refuse.
+            right response is to refuse. A column marked “Not run” has no results yet.
           </p>
         </div>
         {!data.measured && <Badge tone="amber">Placeholder values</Badge>}

@@ -10,7 +10,7 @@ from whycode.graph.build import build_pr_graph
 from whycode.graph.queries import Answer, current_decisions, neo4j_runner
 from whycode.graph.schema import apply_schema
 from whycode.graph.supersession import supersede
-from whycode.graph.writer import delete_repo, repo_counts, write_batch
+from whycode.graph.writer import delete_repo, repo_counts, set_repo_state, write_batch
 from whycode.llm.client import Budget, LLMClient
 
 R = "test/fixture"
@@ -61,6 +61,10 @@ def graph(neo4j_test):
     delete_repo(driver, database, R)
 
 
+def repo_stage(run):
+    return run("MATCH (r:Repo {id: $r}) RETURN r.status AS s, r.stage AS st", {"r": R})[0]
+
+
 def statuses(run):
     rows = run("MATCH (d:Decision {repo: $r}) RETURN d.summary AS s, d.status AS st", {"r": R})
     return {r["s"][:12]: r["st"] for r in rows}
@@ -79,6 +83,15 @@ def test_replacing_decision_supersedes_the_older_one_and_5a_shows_only_the_newer
         {"r": R},
     )[0]["p"]
     assert edge["kind"] == "replaces" and edge["evidence_id"] == NEWER_EVIDENCE
+    assert repo_stage(run) == {"s": "READY", "st": "supersession"}
+
+
+def test_a_full_run_keeps_an_ingest_error_on_the_repo(graph):
+    driver, database, run = graph
+    set_repo_state(driver, database, R, status="READY", stage="extract", error="#9: stopped")
+    supersede(run, driver, database, judge("replaces"), R)
+    row = run("MATCH (r:Repo {id: $r}) RETURN r.stage AS st, r.error AS e", {"r": R})[0]
+    assert row == {"st": "supersession", "e": "#9: stopped"}
 
 
 def test_refines_marks_the_older_decision_partial(graph):
@@ -112,6 +125,8 @@ def test_a_link_on_invented_evidence_is_never_written(graph):
 def test_dry_run_lists_pairs_without_calls_or_writes(graph):
     driver, database, run = graph
     llm = judge("replaces")
+    before = repo_stage(run)
     report = supersede(run, driver, database, llm, R, dry_run=True)
     assert len(report.pairs) == 1 and llm.api_calls == 0 and report.statuses == {}
     assert statuses(run)["Switch the X"] == "ACTIVE"
+    assert repo_stage(run) == before

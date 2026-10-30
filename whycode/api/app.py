@@ -172,6 +172,12 @@ def get_health(
     return reads.health(run, found, gap_queue(run, gaps, repo))
 
 
+@router.get("/evaluation", response_model=m.Evaluation)
+def get_evaluation(run: RunDep, repo: RepoDep):
+    found = require_repo(run, repo)
+    return reads.evaluation(found.id)
+
+
 @router.post("/gaps", response_model=m.Gap)
 def flag_gap(run: RunDep, body: m.GapRequest, gaps: Annotated[GapStore, Depends(get_gaps)]):
     repo = _normalize(body.repo)
@@ -191,7 +197,6 @@ for _method, _path in [
     ("POST", "/repos/sync"),
     ("POST", "/repos/reingest"),
     ("GET", "/ingestion"),
-    ("GET", "/evaluation"),
 ]:
     router.add_api_route(_path, _not_implemented, methods=[_method], status_code=501)
 

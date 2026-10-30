@@ -117,7 +117,7 @@ function HomeContent({ repoId, partialNote }: { repoId: string; partialNote: str
               ) : (
                 <ul className="mt-4 space-y-3">
                   {data.showcase.map((s) => (
-                    <li key={s.outcome}>
+                    <li key={s.entity.id}>
                       <Link
                         to={whyPath(s.entity.id, s.question)}
                         className="block rounded-xl border border-line bg-raised p-4 hover:border-line-strong"
