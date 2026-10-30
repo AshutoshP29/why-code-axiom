@@ -317,3 +317,32 @@ def test_the_same_person_quoted_twice_is_one_independent_source():
     a = ask(FakeGraph(q5a=[row])).json()
     labels = {f["label"]: f for f in a["confidence_factors"]}
     assert labels["Independent sources"]["display"] == "1 of 2 needed"
+
+
+def test_a_name_in_the_question_beats_plain_words_that_score_higher():
+    # Seen on the real graph: post and get (0.86) outranked rebuild_method (0.76).
+    post = {"node": {"id": f"{REPO}#fn:src/requests/api.py::post", "name": "post"}, "score": 6.0}
+    graph = answered_graph(search=[post, SEARCH_HIT])
+    a = ask(graph, entity_id=None, question="Why does apparent_encoding run on a POST?").json()
+    assert a["entity"]["id"] == FN and a["match_score"] == 0.75
+
+
+def test_code_names_in_order_and_plain_words_skipped():
+    assert answers.code_names("Why does Response.json raise JSONDecodeError on POST?") == [
+        "Response.json",
+        "JSONDecodeError",
+    ]
+    assert answers.code_names("why is my session slow") == []
+
+
+def test_named_hit_prefers_the_first_name_and_falls_back_to_none():
+    def hit(name, qualified, score):
+        return answers.m.EntityMatch(
+            id=f"{REPO}#fn:x.py::{qualified}", kind="function", name=name,
+            qualified_name=qualified, path="x.py", score=score,
+        )  # fmt: skip
+
+    hits = [hit("JSONDecodeError", "JSONDecodeError", 0.86), hit("json", "Response.json", 0.77)]
+    chosen = answers.named_hit("Why does Response.json raise JSONDecodeError?", hits)
+    assert chosen.qualified_name == "Response.json"
+    assert answers.named_hit("why is it slow", hits) is None
