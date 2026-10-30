@@ -303,6 +303,10 @@ class SupersessionReport:
 
 
 def supersede(run, driver, database: str, llm, repo: str, *, dry_run=False) -> SupersessionReport:
+    """Judge the candidate pairs and write the verdicts. A full run (every pair judged) marks the
+    repo's supersession stage done, which the health screen shows."""
+    from whycode.graph.writer import set_repo_state
+
     repo = normalize_repo(repo)
     report = SupersessionReport()
     report.pairs = select_pairs(run(Q_CANDIDATES, {"repo": repo}))
@@ -313,6 +317,14 @@ def supersede(run, driver, database: str, llm, repo: str, *, dry_run=False) -> S
     )
     if not dry_run:
         report.statuses = apply_verdicts(driver, database, repo, report.judgements)
+        if not report.stopped_early:
+            # set_repo_state clears the error unless given one; keep an ingest error such as a PR
+            # that stopped part-way, since supersession does not fix it.
+            kept = run("MATCH (r:Repo {id: $repo}) RETURN r.error AS error", {"repo": repo})
+            error = kept[0]["error"] if kept else None
+            set_repo_state(
+                driver, database, repo, status="READY", stage="supersession", error=error
+            )
     return report
 
 
