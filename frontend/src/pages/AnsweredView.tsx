@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useId, useState } from 'react'
 import { Link } from 'react-router'
 import type { AnsweredAnswer, HedgedAnswer, Person } from '../api/types'
 import {
@@ -35,6 +35,7 @@ export function AnsweredView({
   asked: string
 }) {
   const [asking, setAsking] = useState<Person | null>(null)
+  const alternativesHeading = useId() // unique even if two cards are on one page
   const hedged = answer.verdict === 'hedged'
   const d = answer.decision
   const decidedOn = d.decided_at.slice(0, 10)
@@ -85,9 +86,9 @@ export function AnsweredView({
           {d.alternatives.length > 0 && (
             <div className="mt-4 border-t border-line pt-3">
               <SectionLabel>
-                <span id="alternatives-heading">Also considered</span>
+                <span id={alternativesHeading}>Also considered</span>
               </SectionLabel>
-              <ul aria-labelledby="alternatives-heading" className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+              <ul aria-labelledby={alternativesHeading} className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
                 {d.alternatives.map((option) => (
                   <li key={option}>{option}</li>
                 ))}
