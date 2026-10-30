@@ -461,6 +461,8 @@ const AE1 = decision('89ca71956b80d160', {
   status: 'ACTIVE',
   proposed_by: 'ashb',
   reviewed_by: 'sigmavirus24',
+  // Who merged the PR, then each approving review in order, as whycode/graph/build.py records them.
+  approved_by: ['sigmavirus24', 'Ousret', 'mik-laj', 'kaxil', 'sethmlarson', 'nateprewitt'],
   source: realPr(PR_5797),
 })
 
