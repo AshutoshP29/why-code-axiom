@@ -120,10 +120,16 @@ uv run python -m whycode.ingest.codemap --repo psf/requests --since 2020-01-01  
 Clones or updates the repository in `cache/repos/<owner>/<name>` (gitignored), parses every
 `.py` file at the default branch's HEAD into File, Class, Function, ConfigKey and Module nodes,
 and reads `git log` into Commit nodes linked by REFERENCES (to the PR in a "(#N)" or "Merge pull
-request #N" subject), REVERTS and MODIFIES `{added, removed}`. File `aliases` hold earlier paths
-(`requests/sessions.py` -> `src/requests/sessions.py`), and history under an old path counts for
-the file it became. Writes are MERGE only and never touch decisions, so a re-run changes no
-count. psf/requests takes about 7 seconds to read: 37 files, 826 code entities, 6,496 commits.
+request #N" subject, only when the PR ingest already wrote that PR), REVERTS and MODIFIES
+`{added, removed}`. File `aliases` hold earlier paths (`requests/sessions.py` ->
+`src/requests/sessions.py`), added to any alias already there, and history under an old path
+counts for the file it became. Writes are MERGE only and refuse anything the code map does not
+own: no decisions, evidence, people or pull requests, and none of the Repo node's run state, so
+it can run before or after `whycode.ingest.run` and a re-run changes no count.
+
+psf/requests takes about 8 seconds to read. At most it adds (MERGE reuses what the PR ingest
+already wrote): full history 7,363 nodes and 5,791 relationships (6,496 commits, 37 files, 826
+code entities); `--since 2015-01-01` 3,607 nodes and 3,004 relationships (2,740 commits).
 
 ## Local model (optional)
 
