@@ -4,8 +4,8 @@ import pytest
 
 from tests.gitrepo import make_repo
 from whycode.graph.schema import apply_schema
-from whycode.graph.writer import delete_repo, repo_counts, write_batch
-from whycode.ingest.codemap import run_codemap
+from whycode.graph.writer import delete_repo, repo_counts
+from whycode.ingest.codemap import run_codemap, write_code_map
 
 A, B = "test/codemap", "test/codemap-b"
 
@@ -31,9 +31,9 @@ def db(neo4j_test):
 def test_writing_twice_changes_no_count(db, tiny):
     driver, database = db
     batch, _ = run_codemap(A, tiny)
-    write_batch(driver, database, batch)
+    write_code_map(driver, database, batch)
     first = repo_counts(driver, database, A)
-    write_batch(driver, database, run_codemap(A, tiny)[0])
+    write_code_map(driver, database, run_codemap(A, tiny)[0])
     assert repo_counts(driver, database, A) == first
     by_label, rels = first
     assert by_label == {label: len(nodes) for label, nodes in batch.nodes.items()}
@@ -44,9 +44,9 @@ def test_writing_twice_changes_no_count(db, tiny):
 
 def test_a_second_repo_stays_separate(db, tiny):
     driver, database = db
-    write_batch(driver, database, run_codemap(A, tiny)[0])
+    write_code_map(driver, database, run_codemap(A, tiny)[0])
     alone = repo_counts(driver, database, A)
-    write_batch(driver, database, run_codemap(B, tiny)[0])
+    write_code_map(driver, database, run_codemap(B, tiny)[0])
     assert repo_counts(driver, database, A) == alone
     assert repo_counts(driver, database, B) == alone  # same history, its own nodes
     with driver.session(database=database) as s:
@@ -64,7 +64,7 @@ def test_codemap_leaves_decisions_alone(db, tiny):
             id=f"{A}#dec:0000000000000000",
             repo=A,
         ).consume()
-    write_batch(driver, database, run_codemap(A, tiny)[0])
+    write_code_map(driver, database, run_codemap(A, tiny)[0])
     by_label, _ = repo_counts(driver, database, A)
     assert by_label["Decision"] == 1
 
@@ -78,7 +78,7 @@ def test_references_only_pull_requests_already_ingested(db, tiny):
             id=pr,
             repo=A,
         ).consume()
-    write_batch(driver, database, run_codemap(A, tiny)[0])
+    write_code_map(driver, database, run_codemap(A, tiny)[0])
     with driver.session(database=database) as s:
         rows = s.run(
             "MATCH (c:Commit {repo: $repo})-[:REFERENCES]->(p:PullRequest {repo: $repo}) "
@@ -86,3 +86,26 @@ def test_references_only_pull_requests_already_ingested(db, tiny):
             repo=A,
         ).data()
     assert rows == [{"id": pr, "title": "kept"}]  # "#7" is not in the graph, so not linked
+
+
+def test_file_aliases_already_there_are_kept(db, tiny):
+    driver, database = db
+    core = f"{A}#file:pkg/core.py"
+    with driver.session(database=database) as s:
+        s.run(
+            "MERGE (f:File {id: $id}) SET f.repo = $repo, f.aliases = ['pkg/from_a_pr.py'], "
+            "f.aliases_text = 'pkg/from_a_pr.py'",
+            id=core,
+            repo=A,
+        ).consume()
+    for _ in range(2):
+        write_code_map(driver, database, run_codemap(A, tiny)[0])
+    with driver.session(database=database) as s:
+        f = s.run("MATCH (f:File {id: $id}) RETURN f", id=core).single()["f"]
+        tool = s.run("MATCH (f:File {id: $id}) RETURN f", id=f"{A}#file:scripts/tool.py").single()[
+            "f"
+        ]
+    assert f["aliases"] == ["pkg/from_a_pr.py", "pkg/old_name.py"]
+    assert f["aliases_text"] == "pkg/from_a_pr.py pkg/old_name.py"
+    assert f["path"] == "pkg/core.py"
+    assert (tool["aliases"], tool["aliases_text"]) == ([], "")

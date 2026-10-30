@@ -11,7 +11,7 @@ Decision nodes are never touched.
 import argparse
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
@@ -310,6 +310,38 @@ def run_codemap(
     return batch, add_history(batch, read_history(root, since))
 
 
+# Adds aliases to those a File already has (the PR ingest's included), oldest first, and
+# rebuilds aliases_text the way build.py writes it.
+Q_ADD_ALIASES = """
+UNWIND $rows AS row
+MATCH (f:File {id: row.id})
+WITH f, row, coalesce(f.aliases, []) AS kept
+WITH f, kept + [a IN row.aliases WHERE NOT a IN kept] AS aliases
+SET f.aliases = aliases,
+    f.aliases_text = reduce(s = '', a IN aliases | s + CASE s WHEN '' THEN '' ELSE ' ' END + a)
+"""
+
+
+def write_code_map(driver, database: str, batch: GraphBatch) -> None:
+    """write_batch, except that File aliases are added to the ones already there.
+
+    write_batch replaces a property with SET +=, which would drop an alias the PR ingest
+    found (a path the PR used) that this clone's renames do not show. Files are written
+    without aliases and the aliases are then merged in, so nothing already there is lost.
+    """
+    from whycode.graph.writer import write_batch
+
+    files = batch.nodes.get("File", {})
+    rows = [{"id": fid, "aliases": props.get("aliases", [])} for fid, props in files.items()]
+    bare = {
+        fid: {k: v for k, v in props.items() if k not in ("aliases", "aliases_text")}
+        for fid, props in files.items()
+    }
+    write_batch(driver, database, replace(batch, nodes={**batch.nodes, "File": bare}))
+    with driver.session(database=database) as session:
+        session.run(Q_ADD_ALIASES, rows=rows).consume()
+
+
 def _target(name: str):
     from whycode.graph import client
 
@@ -322,7 +354,7 @@ def _target(name: str):
 
 def main(argv: list[str] | None = None) -> int:
     from whycode.config import ConfigError
-    from whycode.graph.writer import repo_counts, write_batch
+    from whycode.graph.writer import repo_counts
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--repo", required=True, help="owner/name")
@@ -367,7 +399,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     driver = target.driver()
     try:
-        write_batch(driver, target.database, batch)
+        write_code_map(driver, target.database, batch)
         by_label, rel_count = repo_counts(driver, target.database, repo)
     finally:
         driver.close()

@@ -274,11 +274,58 @@ def test_cli_dry_run_reports_counts(tiny, tmp_path, capsys):
     assert (tmp_path / "test" / "tiny" / ".git").exists()
 
 
+class RecordingDriver:
+    """Just enough of a neo4j Driver to record the queries a session runs."""
+
+    def __init__(self):
+        self.runs = []
+
+    def session(self, database):
+        driver = self
+
+        class Session:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            def run(self, query, **params):
+                driver.runs.append((database, query, params))
+
+                class Result:
+                    def consume(self):
+                        return None
+
+                return Result()
+
+        return Session()
+
+
+def test_write_code_map_adds_aliases_instead_of_replacing(full, monkeypatch):
+    b, _, _ = full
+    written = []
+    monkeypatch.setattr(
+        "whycode.graph.writer.write_batch", lambda d, db, batch: written.append(batch)
+    )
+    driver = RecordingDriver()
+    codemap.write_code_map(driver, "neo4j", b)
+    (sent,) = written
+    assert sent.nodes["File"][CORE] == {"repo": R, "path": "pkg/core.py", "name": "core.py"}
+    assert sent.nodes["Commit"] is b.nodes["Commit"] and sent.rels is b.rels
+    assert b.nodes["File"][CORE]["aliases"] == ["pkg/old_name.py"]  # the batch is unchanged
+    ((database, query, params),) = driver.runs
+    assert database == "neo4j" and query == codemap.Q_ADD_ALIASES
+    assert {"id": CORE, "aliases": ["pkg/old_name.py"]} in params["rows"]
+    assert len(params["rows"]) == len(b.nodes["File"])
+    assert "coalesce(f.aliases, [])" in query and "NOT a IN kept" in query
+
+
 def test_cli_writes_with_the_writer(tiny, tmp_path, monkeypatch, capsys):
     root, _ = tiny
     written, closed = [], []
 
-    class Driver:
+    class Driver(RecordingDriver):
         def close(self):
             closed.append(True)
 
