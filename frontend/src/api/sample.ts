@@ -451,8 +451,9 @@ const T1 = decision('3e429f501fd9e9ec', {
   source: commit('d7a3f10', 'timeout'),
 })
 
-// Real: the decision recorded from PR #5797, decided (merged) on 2021-07-06.
-const AE1 = decision('e15ff91b2e4f9b4d', {
+// Real: decision 11 of those the graph recorded from PR #5797, decided (merged) on 2021-07-06.
+// Decision 0 from the same PR is a different one (adding a requests[lgpl] extra).
+const AE1 = decision('89ca71956b80d160', {
   summary: 'Replace chardet (LGPL) with charset_normalizer (MIT)',
   rationale:
     'With an LGPL dependency it was unclear whether projects that bundle requests into one binary must be LGPL too, and the Apache Software Foundation cannot depend on LGPL code. charset_normalizer is MIT licensed; chardet is still used first if it is installed.',
@@ -460,6 +461,8 @@ const AE1 = decision('e15ff91b2e4f9b4d', {
   status: 'ACTIVE',
   proposed_by: 'ashb',
   reviewed_by: 'sigmavirus24',
+  // Who merged the PR, then each approving review in order, as whycode/graph/build.py records them.
+  approved_by: ['sigmavirus24', 'Ousret', 'mik-laj', 'kaxil', 'sethmlarson', 'nateprewitt'],
   source: realPr(PR_5797),
 })
 
@@ -513,14 +516,14 @@ const APPARENT_ENCODING: AnsweredAnswer = {
     },
     {
       kind: 'discussion',
-      title: 'Review: how close charset_normalizer must stay to chardet',
+      title: 'PR #5797: comment by @Ousret',
       excerpt:
-        '"The main thing we need is reasonable confidence this is mostly backwards compatible." The maintainer asked for roughly 75% agreement with chardet before switching.',
-      meta: ['2021-05-11', '@sigmavirus24'],
+        '"I have re-run all the tests proposed by the community, including mine" … "Everything is OK. Sames conclusion, all around ~80% compatibility." The tests compare what charset_normalizer detects with what chardet detects.',
+      meta: ['2021-05-17', '@Ousret'],
       source: {
-        id: id('ev', `pr:${PR_5797}:ic:838320835`),
+        id: id('ev', `pr:${PR_5797}:ic:842306896`),
         label: `PR #${PR_5797} comment`,
-        url: `${GH}/pull/${PR_5797}#issuecomment-838320835`,
+        url: `${GH}/pull/${PR_5797}#issuecomment-842306896`,
       },
     },
     {

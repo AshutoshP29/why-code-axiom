@@ -23,6 +23,7 @@ async function expectNoViolations(page: Page) {
 const PAGES: { name: string; path: string; loaded: string }[] = [
   { name: 'Home', path: '/', loaded: 'Hotspots' },
   { name: 'Why Workspace', path: why(ID.rebuildAuth, 'q'), loaded: 'Chain of evidence' },
+  { name: 'Real answer', path: why(ID.apparentEncoding, 'q'), loaded: 'Chain of evidence' },
   { name: 'Refusal', path: why(ID.checkCompatibility, 'q'), loaded: 'What the graph does know' },
   { name: 'Hedged answer', path: why(ID.timeout, 'q'), loaded: 'Low confidence: check before relying on this' },
   { name: 'Plain question, matched', path: why(null, 'why does rebuild_auth strip the header?'), loaded: 'Chain of evidence' },

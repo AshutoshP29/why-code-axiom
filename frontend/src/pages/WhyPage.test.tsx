@@ -24,10 +24,18 @@ describe('Why Workspace', () => {
       'href',
       'https://github.com/psf/requests/pull/5797',
     )
+    expect(within(chain).getByRole('link', { name: /^PR #5797: comment by @Ousret/ })).toHaveAttribute(
+      'href',
+      'https://github.com/psf/requests/pull/5797#issuecomment-842306896',
+    )
     expect(within(chain).getByRole('link', { name: /^3e798b9:/ })).toHaveAttribute(
       'href',
       'https://github.com/psf/requests/commit/3e798b94717918ea48a38cdc315bf47a1067cb39',
     )
+    expect(
+      screen.getByText('Approved by @sigmavirus24, @Ousret, @mik-laj, @kaxil, @sethmlarson, @nateprewitt'),
+    ).toBeInTheDocument()
+    expect(screen.queryByText(/^Reviewed by/)).not.toBeInTheDocument() // sigmavirus24 is named once
     expect(screen.getByRole('button', { name: /^Ask\s*@ashb/ })).toHaveTextContent('Inactive')
     expect(screen.getByRole('button', { name: /^Ask\s*@nateprewitt/ })).toHaveTextContent('Active')
   })

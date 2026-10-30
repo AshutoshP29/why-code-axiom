@@ -4,6 +4,9 @@ import type { Decision } from './types'
 
 const PROMPT_VERSION = 'extract-v2' // whycode/extract/prompt.py
 
+// The chardet → charset_normalizer decision: the twelfth (position 11) the graph recorded from PR #5797.
+const REAL_DECISION = 'psf/requests#dec:89ca71956b80d160'
+
 // The id forms in whycode/ids.py and whycode/graph/schema.cypher, for every kind the sample uses.
 const ID_FORMS = [
   String.raw`pr:\d+`,
@@ -77,13 +80,15 @@ describe('sample ids', () => {
   })
 
   it('hash each decision from its source, the prompt version and its position, as decision_key does', async () => {
-    // Worked out with whycode.ids.decision_id("psf/requests", "psf/requests#pr:5797", "extract-v2", 0).
-    expect(`${SAMPLE_REPO}#dec:${await decisionKey('psf/requests#pr:5797', 0)}`).toBe('psf/requests#dec:e15ff91b2e4f9b4d')
+    // Worked out with whycode.ids.decision_id("psf/requests", "psf/requests#pr:5797", "extract-v2", 11).
+    expect(`${SAMPLE_REPO}#dec:${await decisionKey('psf/requests#pr:5797', 11)}`).toBe(REAL_DECISION)
 
     const all = decisions()
     expect(all.length).toBeGreaterThan(5)
     for (const d of all) {
-      expect(d.id, d.summary).toBe(`${SAMPLE_REPO}#dec:${await decisionKey(d.source.id, 0)}`)
+      // The made-up decisions are each the first from their source.
+      const position = d.id === REAL_DECISION ? 11 : 0
+      expect(d.id, d.summary).toBe(`${SAMPLE_REPO}#dec:${await decisionKey(d.source.id, position)}`)
     }
   })
 
@@ -91,5 +96,13 @@ describe('sample ids', () => {
     expect(E.apparentEncoding.id).toBe('psf/requests#fn:src/requests/models.py::Response.apparent_encoding')
     expect(E.checkCompatibility.id).toBe('psf/requests#fn:src/requests/__init__.py::check_compatibility')
     expect(E.rebuildAuth.id).toBe('psf/requests#fn:src/requests/sessions.py::SessionRedirectMixin.rebuild_auth')
+
+    const answer = ANSWERS[E.apparentEncoding.id]
+    if (answer.verdict !== 'answered') throw new Error(`expected an answer, got ${answer.verdict}`)
+    expect(answer.decision.id).toBe(REAL_DECISION)
+    expect(answer.evidence_chain.map((s) => s.source.id).filter((i) => i.includes('#ev:'))).toEqual([
+      'psf/requests#ev:pr:5797:body',
+      'psf/requests#ev:pr:5797:ic:842306896',
+    ])
   })
 })
