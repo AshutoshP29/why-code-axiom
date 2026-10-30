@@ -4,7 +4,9 @@ Each query starts with a "// q:<name>" comment so logs and test fakes can tell t
 Rows come from a Run (whycode.graph.queries): cypher + params -> list of plain dicts.
 """
 
+import json
 import re
+from pathlib import Path
 
 from whycode.api import models as m
 from whycode.graph.queries import Run
@@ -283,6 +285,8 @@ EVAL_METRICS = (
     "Correct refusals",
     "Answers with evidence links",
 )
+# Written by scripts/evaluate.py; one entry per repo id. Missing file or repo = not measured.
+EVALUATION_FILE = Path(__file__).resolve().parents[2] / "docs" / "evaluation.json"
 _STAGE_DETAIL = {
     "fetch": "pull requests, commits, issues",
     "parse": "files, classes, functions, config keys",
@@ -344,12 +348,24 @@ def health(run: Run, r: m.Repo, gap_queue: list[m.Gap]) -> m.Health:
         stages=stages(r, headlines),
         counts=counts,
         gap_queue=gap_queue,
-        evaluation=m.EvaluationSummary(
-            question_count=0,
-            measured=False,
-            rows=[
-                m.EvalRow(metric=name, llm_only=None, vector_rag=None, whycode=None)
-                for name in EVAL_METRICS
-            ],
-        ),
+        evaluation=m.EvaluationSummary(**evaluation(r.id).model_dump(exclude={"questions"})),
+    )
+
+
+def evaluation(repo_id: str, path: Path | None = None) -> m.Evaluation:
+    """The last measured evaluation of a repo, or placeholders when it was never measured."""
+    try:
+        saved = json.loads((path or EVALUATION_FILE).read_text(encoding="utf-8")).get(repo_id)
+    except (OSError, ValueError):
+        saved = None
+    if saved:
+        return m.Evaluation(**saved, measured=True)
+    return m.Evaluation(
+        question_count=0,
+        measured=False,
+        rows=[
+            m.EvalRow(metric=name, llm_only=None, vector_rag=None, whycode=None)
+            for name in EVAL_METRICS
+        ],
+        questions=[],
     )

@@ -183,7 +183,6 @@ def test_scale_is_monotonic_and_bounded():
         ("post", "/api/repos/sync"),
         ("post", "/api/repos/reingest"),
         ("get", "/api/ingestion"),
-        ("get", "/api/evaluation"),
     ],
 )
 def test_not_implemented_stubs(method, path):
