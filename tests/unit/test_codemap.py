@@ -271,6 +271,9 @@ def test_cli_dry_run_reports_counts(tiny, tmp_path, capsys):
     assert code == 0
     assert f"HEAD {shas['c7'][:12]}: 5 .py files" in out
     assert "7 commits, 2 PR references, 1 reverts" in out
+    lines = out.splitlines()
+    assert {"  Commit: 7", "  File: 5", "  REVERTS: 1"} <= set(lines)
+    assert "  REFERENCES: 2 (at most; only PRs already in the graph are linked)" in out
     assert (tmp_path / "test" / "tiny" / ".git").exists()
 
 

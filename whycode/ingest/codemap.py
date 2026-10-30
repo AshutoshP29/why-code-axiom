@@ -410,6 +410,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     nodes, rels = batch.count()
     print(f"Batch: {nodes} nodes, {rels} relationships")
+    for label, n in sorted((label, len(ids)) for label, ids in batch.nodes.items()):
+        print(f"  {label}: {n}")
+    by_type: dict[str, int] = {}
+    for (type_, _, _), pairs in batch.rels.items():
+        by_type[type_] = by_type.get(type_, 0) + len(pairs)
+    at_most = " (at most; only PRs already in the graph are linked)"
+    for type_, n in sorted(by_type.items()):
+        print(f"  {type_}: {n}{at_most if type_ == 'REFERENCES' else ''}")
     if args.dry_run:
         return 0
 
