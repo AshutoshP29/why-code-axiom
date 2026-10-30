@@ -381,3 +381,52 @@ def test_history_dates_survive_a_malformed_timezone(monkeypatch):
     (c,) = codemap.read_history(Path("."))
     assert c.date == datetime(2011, 9, 8, 2, 38, 50, tzinfo=UTC)
     assert (c.parents, c.numstat) == ((), ((1, 0, "a.py"),))
+
+
+def test_the_batch_holds_only_what_the_code_map_owns(full, tiny):
+    b, _, _ = full
+    codemap.check_code_map(b)  # does not raise
+    assert set(b.nodes) <= codemap.CODE_MAP_LABELS
+    assert {t for t, _, _ in b.rels} <= codemap.CODE_MAP_RELS
+    for owned in ("Decision", "Evidence", "Person", "PullRequest", "Issue"):
+        assert owned not in b.nodes
+    assert not set(b.nodes["Repo"][R]) & codemap.RUN_OWNED
+    assert not b.replaces_decisions_of
+
+
+@pytest.mark.parametrize(
+    "spoil",
+    [
+        lambda b: b.node("Decision", f"{R}#dec:1", summary="x"),
+        lambda b: b.rel("AFFECTS", ("Decision", f"{R}#dec:1"), ("File", CORE)),
+        lambda b: b.rel("AUTHORED", ("Person", f"{R}#person:ada"), ("Commit", f"{R}#commit:a")),
+        lambda b: b.node("Repo", R, status="READY"),
+        lambda b: b.node("Repo", R, progress_pct=50.0),
+        lambda b: b.replaces_decisions_of.append(("PullRequest", f"{R}#pr:1")),
+    ],
+)
+def test_write_code_map_refuses_anything_else(tiny, spoil, monkeypatch):
+    root, shas = tiny
+    b = codemap.build_code_map(R, root, shas["c7"])
+    spoil(b)
+    monkeypatch.setattr("whycode.graph.writer.write_batch", lambda *a: pytest.fail("wrote"))
+    with pytest.raises(ValueError, match="not the code map's to write"):
+        codemap.write_code_map(RecordingDriver(), "neo4j", b)
+
+
+def test_commit_dates_are_the_type_the_pr_ingest_writes(full):
+    from whycode.graph.build import parse_time
+
+    b, _, shas = full
+    ours = b.nodes["Commit"][cid(shas["c3"])]["date"]
+    theirs = parse_time("2024-01-03T12:00:00Z")
+    assert ours == theirs
+    assert type(ours) is type(theirs) and ours.tzinfo is theirs.tzinfo  # zoned, never naive
+    assert all(c["date"].utcoffset() is not None for c in b.nodes["Commit"].values())
+
+
+def test_building_twice_gives_the_same_batch(tiny):
+    root, shas = tiny
+    first, _ = codemap.run_codemap(R, root, shas["c7"])
+    second, _ = codemap.run_codemap(R, root, shas["c7"])
+    assert (first.nodes, first.rels) == (second.nodes, second.rels)

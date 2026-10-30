@@ -310,6 +310,26 @@ def run_codemap(
     return batch, add_history(batch, read_history(root, since))
 
 
+# What the code map may write. Decisions, evidence, people and pull requests belong to the PR
+# ingest, and the Repo node's status, stage, progress_pct, partial and error to whycode.ingest.run.
+CODE_MAP_LABELS = frozenset({"Repo", "Module", "File", "Class", "Function", "ConfigKey", "Commit"})
+CODE_MAP_RELS = frozenset({"CONTAINS", "MODIFIES", "REFERENCES", "REVERTS"})
+RUN_OWNED = frozenset({"status", "stage", "progress_pct", "partial", "error"})
+
+
+def check_code_map(batch: GraphBatch) -> None:
+    """Raise if the batch would write anything the code map does not own."""
+    labels = set(batch.nodes) - CODE_MAP_LABELS
+    types = {t for t, _, _ in batch.rels} - CODE_MAP_RELS
+    ends = {end for _, a, b in batch.rels for end in (a, b)} - CODE_MAP_LABELS - {"PullRequest"}
+    repo_props = {k for props in batch.nodes.get("Repo", {}).values() for k in props} & RUN_OWNED
+    if labels or types or ends or repo_props or batch.replaces_decisions_of:
+        raise ValueError(
+            f"not the code map's to write: labels {sorted(labels | ends)}, "
+            f"relationships {sorted(types)}, Repo properties {sorted(repo_props)}"
+        )
+
+
 # Adds aliases to those a File already has (the PR ingest's included), oldest first, and
 # rebuilds aliases_text the way build.py writes it.
 Q_ADD_ALIASES = """
@@ -331,6 +351,7 @@ def write_code_map(driver, database: str, batch: GraphBatch) -> None:
     """
     from whycode.graph.writer import write_batch
 
+    check_code_map(batch)
     files = batch.nodes.get("File", {})
     rows = [{"id": fid, "aliases": props.get("aliases", [])} for fid, props in files.items()]
     bare = {
