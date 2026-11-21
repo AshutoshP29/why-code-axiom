@@ -405,4 +405,5 @@ export interface User {
 export interface Session {
   enabled: boolean // false: this API has sign-in off and every screen is open
   user: User | null
+  can_add_repos: boolean // may add, sync and re-run repositories
 }

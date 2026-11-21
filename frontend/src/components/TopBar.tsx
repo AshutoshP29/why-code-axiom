@@ -2,7 +2,7 @@ import { Link, NavLink } from 'react-router'
 import { useApi } from '../api/context'
 import { useEntity, useMe, useSyncRepo } from '../api/queries'
 import type { EntityKind, Repo } from '../api/types'
-import { INGEST_ACTIONS } from '../lib/features'
+import { useIngestActions } from '../lib/features'
 import { formatRelative } from '../lib/format'
 import { useNow } from '../lib/hooks'
 import { cx } from '../lib/tones'
@@ -88,6 +88,7 @@ function CompactAsk({ entityId, text }: TopBarAsk) {
 function SyncChip({ repo }: { repo: Repo }) {
   const now = useNow()
   const sync = useSyncRepo()
+  const canSync = useIngestActions()
   return (
     <div className="hidden items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs md:flex">
       <Dot tone="green" />
@@ -98,7 +99,7 @@ function SyncChip({ repo }: { repo: Repo }) {
             ? `Synced ${formatRelative(repo.last_synced_at, now)}`
             : 'Not synced yet'}
       </span>
-      {INGEST_ACTIONS && (
+      {canSync && (
         <button
           type="button"
           onClick={() => sync.mutate(repo.id)}

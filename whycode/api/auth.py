@@ -9,6 +9,8 @@ an expiry; no GitHub token is kept, since the API only needs to know who the use
     CRON_SECRET                             set by Vercel Cron; lets the keep-alive in unsigned
     REVIEWER_USERNAME, REVIEWER_PASSWORD    one password account for evaluators and scanners
                                             that cannot sign in through GitHub (20+ characters)
+    WHYCODE_ADDERS                          comma-separated logins allowed to add, sync and
+                                            re-run repositories; unset = anyone signed in
 
 Password sign-in is limited per client and overall (failures kept in Postgres when reachable),
 so a long random password cannot be guessed and one guesser cannot lock everyone out quickly.
@@ -53,6 +55,7 @@ class User(BaseModel):
 class Session(BaseModel):
     enabled: bool  # False: this API has sign-in off and every route is open
     user: User | None
+    can_add_repos: bool  # may add, sync and re-run repositories (see may_add_repos)
 
 
 def enabled() -> bool:
@@ -139,8 +142,28 @@ router = APIRouter(prefix="/api/auth")
 def me(request: Request):
     """Always 200, so a signed-out visitor's first page load logs no failed request."""
     if not enabled():
-        return Session(enabled=False, user=None)
-    return Session(enabled=True, user=current_user(request))
+        return Session(enabled=False, user=None, can_add_repos=True)
+    user = current_user(request)
+    return Session(enabled=True, user=user, can_add_repos=may_add_repos(user))
+
+
+def may_add_repos(user: User | None) -> bool:
+    """Adding a repository starts a long run with AI calls, so WHYCODE_ADDERS can keep it to the
+    team. With sign-in off (local development) everyone may."""
+    if not enabled():
+        return True
+    if user is None:
+        return False
+    allowed = {x.strip().lower() for x in os.environ.get("WHYCODE_ADDERS", "").split(",")}
+    allowed.discard("")
+    return not allowed or user.login.lower() in allowed
+
+
+def require_adder(user: User | None) -> None:
+    if not may_add_repos(user):
+        raise HTTPException(
+            403, "Adding and re-reading repositories is limited to the WhyCode team."
+        )
 
 
 @router.get("/login")

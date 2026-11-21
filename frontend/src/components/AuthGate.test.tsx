@@ -24,7 +24,7 @@ function renderLive(api: WhyCodeApi, path = '/health?x=1') {
 describe('sign-in', () => {
   it('asks a signed-out visitor to sign in, coming back to the same page', async () => {
     const api = createMockApi({ delayMs: 0 })
-    api.getMe = async () => ({ enabled: true, user: null })
+    api.getMe = async () => ({ enabled: true, user: null, can_add_repos: false })
     api.loginUrl = (next) => `/api/auth/login?next=${encodeURIComponent(next)}`
     const listRepos = vi.spyOn(api, 'listRepos')
     renderLive(api)
@@ -36,7 +36,7 @@ describe('sign-in', () => {
 
   it('shows the screens and the user once signed in, and signs out', async () => {
     const api = createMockApi({ delayMs: 0 })
-    api.getMe = async () => ({ enabled: true, user: OCTOCAT })
+    api.getMe = async () => ({ enabled: true, user: OCTOCAT, can_add_repos: true })
     const logout = vi.fn(async () => {})
     api.logout = logout
     const assign = vi.fn()
@@ -62,7 +62,11 @@ describe('reviewer sign-in', () => {
   function signedOut() {
     const api = createMockApi({ delayMs: 0 })
     let signedIn = false
-    api.getMe = async () => ({ enabled: true, user: signedIn ? { ...OCTOCAT, login: 'reviewer' } : null })
+    api.getMe = async () => ({
+      enabled: true,
+      user: signedIn ? { ...OCTOCAT, login: 'reviewer' } : null,
+      can_add_repos: signedIn,
+    })
     api.reviewerLogin = vi.fn(async (username: string, password: string) => {
       if (password !== 'right-password') throw new ApiError(401, 'Wrong username or password.')
       signedIn = username === 'reviewer'
