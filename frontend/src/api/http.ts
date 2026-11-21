@@ -5,6 +5,7 @@ import type {
   Evaluation,
   Explorer,
   Gap,
+  GuardReport,
   Health,
   Ingestion,
   Lineage,
@@ -79,6 +80,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     getMe: () => get<Session>('/auth/me'),
     logout: () => post<undefined>('/auth/logout', {}),
     loginUrl: (next) => `${base}/auth/login?${new URLSearchParams({ next })}`,
+    checkPull: (repo, pull) => post<GuardReport>('/guard', { repo, pull }),
   }
 }
 

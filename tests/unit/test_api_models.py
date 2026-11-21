@@ -53,6 +53,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "Health": m.Health,
     "User": User,
     "Session": Session,
+    "GuardPull": m.GuardPull,
+    "GuardHit": m.GuardHit,
+    "GuardReport": m.GuardReport,
 }
 INLINE = {
     ("Overview", "counts"): m.OverviewCounts,

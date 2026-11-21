@@ -6,6 +6,7 @@ import { AuthGate } from './components/AuthGate'
 import { Layout } from './components/Layout'
 import { EvaluationPage } from './pages/EvaluationPage'
 import { ExplorePage } from './pages/ExplorePage'
+import { GuardPage } from './pages/GuardPage'
 import { HealthPage } from './pages/HealthPage'
 import { HomePage } from './pages/HomePage'
 import { LineagePage } from './pages/LineagePage'
@@ -48,6 +49,7 @@ export function AppRoutes() {
         <Route path="health" element={<HealthPage />} />
         <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="explore" element={<ExplorePage />} />
+        <Route path="guard" element={<GuardPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
