@@ -200,6 +200,7 @@ export function sampleRepos(now: number): Repo[] {
       last_synced_at: minutesAgo(now, 10),
       commits_count: 6495,
       decisions_count: 2140,
+      added: true,
     },
     {
       id: 'pallets/flask',
@@ -211,6 +212,7 @@ export function sampleRepos(now: number): Repo[] {
       last_synced_at: minutesAgo(now, 120),
       commits_count: 5400,
       decisions_count: 1600,
+      added: true,
     },
     {
       id: 'encode/httpx',
@@ -222,6 +224,7 @@ export function sampleRepos(now: number): Repo[] {
       last_synced_at: null,
       commits_count: 2900,
       decisions_count: 430,
+      added: true,
     },
   ]
 }

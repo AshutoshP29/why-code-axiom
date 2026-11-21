@@ -260,6 +260,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
         last_synced_at: null,
         commits_count: estimate(repoId).commits,
         decisions_count: 0,
+        added: true,
       }
       repos.push(repo)
       runs.set(repoId, now())

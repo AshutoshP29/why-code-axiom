@@ -35,6 +35,7 @@ class Repo(BaseModel):
     last_synced_at: datetime | None
     commits_count: int
     decisions_count: int
+    added: bool = False  # added through Add repository: only these can be synced or re-run
 
 
 class StageProgress(BaseModel):

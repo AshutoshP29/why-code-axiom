@@ -88,7 +88,8 @@ function CompactAsk({ entityId, text }: TopBarAsk) {
 function SyncChip({ repo }: { repo: Repo }) {
   const now = useNow()
   const sync = useSyncRepo()
-  const canSync = useIngestActions()
+  // Only repos added from the screens can be synced from them (psf/requests is read by scripts).
+  const canSync = useIngestActions() && repo.added
   return (
     <div className="hidden items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs md:flex">
       <Dot tone="green" />

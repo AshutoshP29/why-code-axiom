@@ -40,7 +40,7 @@ export function HealthPage() {
   const { data, error, refetch } = useHealth(repo?.id ?? null)
   const reingest = useReingest()
   const [confirming, setConfirming] = useState(false)
-  const canRerun = useIngestActions()
+  const canRerun = useIngestActions() && repo?.added === true
   useTitle('Graph health')
 
   if (!repo) return null

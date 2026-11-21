@@ -72,7 +72,7 @@ export function IngestionView({ repoId }: { repoId: string }) {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {stopped ? (
             <>
-              {ingestActions && (
+              {ingestActions && data.repo.added && (
                 <Button variant="primary" disabled={reingest.isPending} onClick={() => reingest.mutate(repoId)}>
                   {reingest.isPending ? 'Starting…' : 'Run it again'}
                 </Button>

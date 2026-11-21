@@ -16,6 +16,7 @@ export interface Repo {
   last_synced_at: string | null
   commits_count: number
   decisions_count: number
+  added: boolean // added through Add repository; only these can be synced or re-run from the screens
 }
 
 /** Result of checking a GitHub link before ingesting it (Add repository dialog). */
