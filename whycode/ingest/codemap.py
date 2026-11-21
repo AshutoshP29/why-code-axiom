@@ -2,10 +2,10 @@
 
     python -m whycode.ingest.codemap --repo psf/requests [--target aura|test] [--since 2020-01-01]
 
-Clones (or updates) https://github.com/<repo> into cache/repos/<owner>/<name>, parses every Python
-and JavaScript file at the default branch's HEAD, and reads `git log` for commits, renames and
-line counts. Everything is written with MERGE (whycode.graph.writer), so a second run changes no
-count, and Decision nodes are never touched.
+Clones (or updates) https://github.com/<repo> into cache/repos/<owner>/<name>, parses every code
+file at the default branch's HEAD (the languages in whycode/code/languages.py, and Python), and
+reads `git log` for commits, renames and line counts. Everything is written with MERGE
+(whycode.graph.writer), so a second run changes no count, and Decision nodes are never touched.
 """
 
 import argparse
@@ -63,7 +63,7 @@ def clone_or_update(url: str, dest: Path) -> str:
 
 
 def code_files(root: Path) -> list[str]:
-    """Tracked files at HEAD that a parser reads (Python, JavaScript; minified bundles left out),
+    """Tracked files at HEAD that a parser reads (generated files such as *.min.js left out),
     repo-relative with forward slashes, sorted."""
     patterns = [f"*{suffix}" for suffix in sorted(SUPPORTED_SUFFIXES)]
     out = git(root, "ls-files", "-z", "--", *patterns)

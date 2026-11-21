@@ -1,8 +1,8 @@
 """Code entities in one source file, parsed with tree-sitter: File, Class, Function, ConfigKey.
 
-Python is read by the walker below. JavaScript, and any language added to
-whycode/code/languages.py, is read by running that language's query (_QueryWalker), with the same
-rules wherever the language has the construct.
+Python is read by the walker below. JavaScript, TypeScript, Java, Go, C#, Rust, Ruby and PHP
+are read by running each language's query from whycode/code/languages.py (_QueryWalker), with
+the same rules wherever the language has the construct.
 
 Only parsing lives here. The caller supplies the file's text (from disk or a git blob) and gets
 back entities with graph ids from whycode/ids.py; writing them to Neo4j is someone else's job.
@@ -19,15 +19,18 @@ Rules:
 - An id seen twice in one file (property setters, if/else redefinitions) keeps the first.
 - A file with syntax errors still yields whatever tree-sitter recovered, with the flag set.
 
-JavaScript, as the query in languages.py finds it:
-- Classes are declarations and named class expressions; `const Widget = class {}` is "Widget".
-- Functions are declarations, methods (getters, setters and the constructor included), and
-  functions assigned to a name: `const f = () => {}`, `res.send = function send() {}` ("send"),
-  `{ close: function () {} }` ("close"). Callbacks passed as arguments are not entities.
-- ConfigKeys are top-level `const`/`let`/`var` declarations, exported or not, with an
-  UPPER_CASE name and a value that is not a function or class; and parameter defaults that
-  reference a constant (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`). Class fields
-  (`static LIMIT = 5`) are not, as class-level names are not for Python.
+The other languages, as their queries in languages.py find them:
+- Classes are each language's type declarations: classes, interfaces, enums, records, structs,
+  traits, Ruby modules. Namespaces and Rust `impl`/`mod` blocks only name what is inside them.
+- Functions are functions, methods (constructors, getters and setters included), C# properties,
+  and in JavaScript/TypeScript functions assigned to a name: `const f = () => {}`,
+  `res.send = function send() {}` ("send"). Callbacks passed as arguments are not entities.
+  A Go method is named after its receiver's type ("Router.Handle").
+- ConfigKeys are constants, inside a class as "Class.NAME": UPPER_CASE top-level `const`/`let`/
+  `var` in JavaScript/TypeScript (class fields are not, as for Python), UPPER_CASE `static
+  final` fields in Java, and any `const` in Go, C#, Rust and PHP, C# `readonly` fields with a
+  value, Rust `static`s, Ruby constants. Also parameter defaults that reference a constant
+  (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`).
 """
 
 import re
@@ -298,14 +301,16 @@ class _Walker:
 
 @dataclass
 class _Definition:
-    """A class or function a query found, before it becomes an entity."""
+    """A class, function or scope a query found, before it becomes an entity. A scope (kind
+    None) names what is inside it but is no entity itself."""
 
-    kind: EntityKind
+    kind: EntityKind | None
     name: str
     node: Node
+    owner: str | None = None  # the type a method declared outside it belongs to (Go)
     qualified: str = ""
     id: str = ""
-    parent_id: str = ""
+    parent: "_Definition | None" = None
 
 
 def _name_text(node: Node) -> str:
@@ -314,6 +319,9 @@ def _name_text(node: Node) -> str:
     if node.type == "string" and len(text) >= 2:
         text = text[1:-1]
     return " ".join(text.split())
+
+
+_KIND_BY_CAPTURE = {"class": EntityKind.CLASS, "function": EntityKind.FUNCTION, "scope": None}
 
 
 class _QueryWalker:
@@ -332,36 +340,51 @@ class _QueryWalker:
         for _, caps in QueryCursor(self.lang.query).matches(root):
             name = caps["name"][0]
             value = caps["value"][0] if "value" in caps else None
-            if "config" in caps and value is not None:
-                configs.append((caps["config"][0], name, value))
-            elif "default" in caps and value is not None:
-                defaults.append((caps["default"][0], name, value))
-            elif "class" in caps or "function" in caps:
-                kind = EntityKind.CLASS if "class" in caps else EntityKind.FUNCTION
-                node = caps["class" if kind is EntityKind.CLASS else "function"][0]
+            if "config" in caps:
+                if value is not None:
+                    configs.append((caps["config"][0], name, value))
+            elif "default" in caps:
+                if value is not None:
+                    defaults.append((caps["default"][0], name, value))
+            elif capture := next((c for c in _KIND_BY_CAPTURE if c in caps), None):
+                node = caps[capture][0]
+                owner = _name_text(caps["owner"][0]) if "owner" in caps else None
                 if text := _name_text(name):
                     spans.setdefault(
-                        (node.start_byte, node.end_byte), _Definition(kind, text, node)
+                        (node.start_byte, node.end_byte),
+                        _Definition(_KIND_BY_CAPTURE[capture], text, node, owner),
                     )
         defs = self._nest(
             sorted(spans.values(), key=lambda d: (d.node.start_byte, -d.node.end_byte))
         )
+        classes = {d.qualified: d for d in defs if d.kind is EntityKind.CLASS}
 
-        found = [
-            (d.node, self._entity(d.id, d.kind, d.name, d.qualified, d.node, d.parent_id))
-            for d in defs
-        ]
+        found = []
+        for d in defs:
+            if d.kind is None:
+                continue
+            if d.owner is not None:
+                parent_id = classes[d.owner].id if d.owner in classes else self.file_id
+            else:
+                parent_id = self._parent_id(d.parent, classes)
+            found.append(
+                (d.node, self._entity(d.id, d.kind, d.name, d.qualified, d.node, parent_id))
+            )
         for stmt, name_node, value in configs:
             name = _text(name_node)
-            if _UPPER_RE.match(name) and value.type not in self.lang.code_values:
-                id_ = make_id(self.repo, "cfg", name)
-                cfg = EntityKind.CONFIG_KEY
-                found.append(
-                    (
-                        stmt,
-                        self._entity(id_, cfg, name, name, stmt, self.file_id, _value_text(value)),
-                    )
-                )
+            if value.type in self.lang.code_values or not self._is_config_name(name):
+                continue
+            holder = self._innermost(stmt, defs)
+            entity = self._entity(
+                make_id(self.repo, "cfg", name),
+                EntityKind.CONFIG_KEY,
+                name,
+                f"{holder.qualified}.{name}" if holder else name,
+                stmt,
+                self._parent_id(holder, classes),
+                _value_text(value),
+            )
+            found.append((stmt, entity))
         for param, name_node, value in defaults:
             owner = self._owner(param, defs)
             if owner is None or not self._references_constant(value):
@@ -413,19 +436,44 @@ class _QueryWalker:
         )
 
     def _nest(self, defs: list[_Definition]) -> list[_Definition]:
-        """Give each definition (sorted by start, outer first) its qualified name and parent: the
-        innermost definition around it, else the file."""
+        """Give each definition (sorted by start, outer first) its qualified name and the
+        innermost definition or scope around it. A method with an owner is "Owner.name"."""
         stack: list[_Definition] = []
         for d in defs:
             while stack and stack[-1].node.end_byte < d.node.end_byte:
                 stack.pop()
-            parent = stack[-1] if stack else None
-            d.qualified = f"{parent.qualified}.{d.name}" if parent else d.name
-            d.parent_id = parent.id if parent else self.file_id
-            prefix = "cls" if d.kind is EntityKind.CLASS else "fn"
-            d.id = make_id(self.repo, prefix, f"{self.path}::{d.qualified}")
+            d.parent = stack[-1] if stack else None
+            if d.owner is not None:
+                d.qualified = f"{d.owner}.{d.name}"
+            else:
+                d.qualified = f"{d.parent.qualified}.{d.name}" if d.parent else d.name
+            if d.kind is not None:
+                prefix = "cls" if d.kind is EntityKind.CLASS else "fn"
+                d.id = make_id(self.repo, prefix, f"{self.path}::{d.qualified}")
             stack.append(d)
         return defs
+
+    def _parent_id(self, parent: _Definition | None, classes: dict[str, _Definition]) -> str:
+        """The entity something belongs to: its definition; through a scope, the class the scope
+        names (Rust's `impl Router` gives the Router struct), else what holds the scope; at the
+        top, the file."""
+        while parent is not None and parent.kind is None:
+            named = classes.get(parent.qualified)
+            if named is not None:
+                return named.id
+            parent = parent.parent
+        return parent.id if parent is not None else self.file_id
+
+    @staticmethod
+    def _innermost(node: Node, defs: list[_Definition]) -> _Definition | None:
+        """The innermost definition or scope strictly around `node` (defs sorted outer first)."""
+        around = None
+        for d in defs:
+            span = (d.node.start_byte, d.node.end_byte)
+            inside = span[0] <= node.start_byte and node.end_byte <= span[1]
+            if inside and span != (node.start_byte, node.end_byte):
+                around = d
+        return around
 
     @staticmethod
     def _owner(param: Node, defs: list[_Definition]) -> _Definition | None:
@@ -439,8 +487,27 @@ class _QueryWalker:
         holders = [fn] if fn.parent is None else [fn, fn.parent]
         return next((d for d in defs if d.kind is EntityKind.FUNCTION and d.node in holders), None)
 
+    def _is_config_name(self, name: str) -> bool:
+        if self.lang.config_upper_only:
+            return bool(_UPPER_RE.match(name))
+        return any(c.isalpha() for c in name)  # not Go's blank `_`
+
+    def _is_constant_name(self, text: str) -> bool:
+        if self.lang.ref_upper_only:
+            return bool(_UPPER_RE.match(text))
+        return bool(text) and (text[0].isalpha() or text[0] == "_")
+
     def _references_constant(self, value: Node) -> bool:
-        if value.type == "identifier":
-            return bool(_UPPER_RE.match(_text(value)))
-        field = self.lang.member_name_field.get(value.type)
-        return field is not None and bool(_UPPER_RE.match(_text(value.child_by_field_name(field))))
+        lang = self.lang
+        if value.type in lang.constant_types:
+            return True
+        if value.type in lang.ref_types:
+            return self._is_constant_name(_text(value))
+        if value.type not in lang.member_name_field:
+            return False
+        field = lang.member_name_field[value.type]
+        named = value.named_children
+        member = value.child_by_field_name(field) if field else (named[-1] if named else None)
+        if member is None:
+            return False
+        return member.type in lang.constant_types or self._is_constant_name(_text(member))

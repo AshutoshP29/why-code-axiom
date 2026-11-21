@@ -5,7 +5,7 @@
 Stored kinds (key in brackets):
     pr [N], issue [N], issue_comments [N:pP], review_comments [N:pP], reviews [N:pP],
     pr_commits [N:pP], pr_files [N:pP], timeline [N:pP],
-    blob [<blob sha>]   content of each changed code file (Python, JavaScript) as the PR left it
+    blob [<blob sha>]   content of each changed code file the code map reads, as the PR left it
     tree [<branch>]     today's file list of the default branch, to map old paths to current ones
 """
 
