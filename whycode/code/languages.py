@@ -24,32 +24,12 @@ A @function may also capture @owner, the type a method belongs to when it is dec
 too: C++'s `void app::Router::serve()` is "Router.serve".
 """
 
+import importlib
 import re
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import PurePosixPath
 
-import tree_sitter_bash as tsbash
-import tree_sitter_c as tsc
-import tree_sitter_c_sharp as tscsharp
-import tree_sitter_cpp as tscpp
-import tree_sitter_dart as tsdart
-import tree_sitter_elixir as tselixir
-import tree_sitter_go as tsgo
-import tree_sitter_haskell as tshaskell
-import tree_sitter_java as tsjava
-import tree_sitter_javascript as tsjs
-import tree_sitter_julia as tsjulia
-import tree_sitter_kotlin as tskotlin
-import tree_sitter_lua as tslua
-import tree_sitter_objc as tsobjc
-import tree_sitter_ocaml as tsocaml
-import tree_sitter_php as tsphp
-import tree_sitter_ruby as tsruby
-import tree_sitter_rust as tsrust
-import tree_sitter_scala as tsscala
-import tree_sitter_swift as tsswift
-import tree_sitter_typescript as tsts
-import tree_sitter_zig as tszig
 from tree_sitter import Language, Query
 
 # Two characters or more, so single-letter type variables ("T") are not config.
@@ -60,10 +40,14 @@ CPP_CONSTANT = re.compile(r"^(_*[A-Z][A-Z0-9_]+|k[A-Z][A-Za-z0-9_]*)$")
 
 @dataclass(frozen=True)
 class QueryLanguage:
+    """A language's grammar and query are built the first time a file in it is read: building
+    all of them took about 4 s, which every API cold start and every code map would pay, even for
+    a repo with no file in most of these languages."""
+
     name: str
     suffixes: frozenset[str]
-    language: Language
-    query: Query
+    grammar: str  # "module:function" returning the tree-sitter language, imported on first use
+    query_source: str
     # Value node types that make a declaration a function or class rather than config:
     # `const make = () => 1` is a function, `const LIMIT = 5` is config.
     code_values: frozenset[str] = frozenset()
@@ -87,10 +71,18 @@ class QueryLanguage:
     # (a `.h` header is C++ or C).
     fallback: "QueryLanguage | None" = None
 
+    @cached_property
+    def language(self) -> Language:
+        module, function = self.grammar.split(":")
+        return Language(getattr(importlib.import_module(module), function)())
 
-def _make(name: str, language_ptr, suffixes: set[str], query: str, **kw) -> QueryLanguage:
-    language = Language(language_ptr)
-    return QueryLanguage(name, frozenset(suffixes), language, Query(language, query), **kw)
+    @cached_property
+    def query(self) -> Query:
+        return Query(self.language, self.query_source)
+
+
+def _make(name: str, grammar: str, suffixes: set[str], query: str, **kw) -> QueryLanguage:
+    return QueryLanguage(name, frozenset(suffixes), grammar, query, **kw)
 
 
 # JavaScript and TypeScript ---------------------------------------------------------------------
@@ -596,20 +588,24 @@ OCAML_QUERY = """
 
 JAVASCRIPT = _make(
     "javascript",
-    tsjs.language(),
+    "tree_sitter_javascript:language",
     {".js", ".mjs", ".cjs", ".jsx"},
     JAVASCRIPT_QUERY,
     skipped_suffixes=(".min.js", ".min.mjs", ".min.cjs"),
     **_JS_LIKE,
 )
 TYPESCRIPT = _make(
-    "typescript", tsts.language_typescript(), {".ts", ".mts", ".cts"}, TYPESCRIPT_QUERY, **_JS_LIKE
+    "typescript",
+    "tree_sitter_typescript:language_typescript",
+    {".ts", ".mts", ".cts"},
+    TYPESCRIPT_QUERY,
+    **_JS_LIKE,
 )
-TSX = _make("tsx", tsts.language_tsx(), {".tsx"}, TYPESCRIPT_QUERY, **_JS_LIKE)
-JAVA = _make("java", tsjava.language(), {".java"}, JAVA_QUERY)
+TSX = _make("tsx", "tree_sitter_typescript:language_tsx", {".tsx"}, TYPESCRIPT_QUERY, **_JS_LIKE)
+JAVA = _make("java", "tree_sitter_java:language", {".java"}, JAVA_QUERY)
 GO = _make(
     "go",
-    tsgo.language(),
+    "tree_sitter_go:language",
     {".go"},
     GO_QUERY,
     config_names=None,
@@ -617,7 +613,7 @@ GO = _make(
 )
 CSHARP = _make(
     "csharp",
-    tscsharp.language(),
+    "tree_sitter_c_sharp:language",
     {".cs"},
     CSHARP_QUERY,
     config_names=None,
@@ -625,10 +621,10 @@ CSHARP = _make(
     member_name_field={"member_access_expression": "name"},
     skipped_suffixes=(".g.cs", ".designer.cs"),
 )
-RUST = _make("rust", tsrust.language(), {".rs"}, RUST_QUERY, config_names=None)
+RUST = _make("rust", "tree_sitter_rust:language", {".rs"}, RUST_QUERY, config_names=None)
 RUBY = _make(
     "ruby",
-    tsruby.language(),
+    "tree_sitter_ruby:language",
     {".rb"},
     RUBY_QUERY,
     code_values=frozenset({"lambda"}),
@@ -639,7 +635,7 @@ RUBY = _make(
 )
 PHP = _make(
     "php",
-    tsphp.language_php(),
+    "tree_sitter_php:language_php",
     {".php"},
     PHP_QUERY,
     config_names=None,
@@ -649,14 +645,16 @@ PHP = _make(
 )
 OBJC = _make(
     "objc",
-    tsobjc.language(),
+    "tree_sitter_objc:language",
     {".m", ".mm"},
     OBJC_QUERY,
     config_names=CPP_CONSTANT,  # Apple names constants kName too
     declarator_types=_C_DECLARATORS,
 )
 # A C file the C grammar trips on may be Objective-C, which extends C.
-C = _make("c", tsc.language(), {".c"}, C_QUERY, declarator_types=_C_DECLARATORS, fallback=OBJC)
+C = _make(
+    "c", "tree_sitter_c:language", {".c"}, C_QUERY, declarator_types=_C_DECLARATORS, fallback=OBJC
+)
 _CPP = {
     "code_values": frozenset({"lambda_expression"}),
     "config_names": CPP_CONSTANT,
@@ -665,17 +663,23 @@ _CPP = {
     "declarator_types": _C_DECLARATORS,
 }
 CPP = _make(
-    "cpp", tscpp.language(), {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"}, CPP_QUERY, **_CPP
+    "cpp",
+    "tree_sitter_cpp:language",
+    {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"},
+    CPP_QUERY,
+    **_CPP,
 )
 # A .h header is read as C++ (which also reads most C), then as C and as Objective-C when the
 # one before finds syntax errors.
-HEADER = _make("c-or-cpp-header", tscpp.language(), {".h"}, CPP_QUERY, fallback=C, **_CPP)
-KOTLIN = _make("kotlin", tskotlin.language(), {".kt", ".kts"}, KOTLIN_QUERY, config_names=None)
-SWIFT = _make("swift", tsswift.language(), {".swift"}, SWIFT_QUERY, config_names=None)
+HEADER = _make("c-or-cpp-header", "tree_sitter_cpp:language", {".h"}, CPP_QUERY, fallback=C, **_CPP)
+KOTLIN = _make(
+    "kotlin", "tree_sitter_kotlin:language", {".kt", ".kts"}, KOTLIN_QUERY, config_names=None
+)
+SWIFT = _make("swift", "tree_sitter_swift:language", {".swift"}, SWIFT_QUERY, config_names=None)
 _SCALA_CONSTANT = re.compile(r"^[A-Z][A-Za-z0-9_]*$")  # MaxRetries or MAX_RETRIES
 SCALA = _make(
     "scala",
-    tsscala.language(),
+    "tree_sitter_scala:language",
     {".scala", ".sc"},
     SCALA_QUERY,
     config_names=_SCALA_CONSTANT,
@@ -684,15 +688,19 @@ SCALA = _make(
 )
 DART = _make(
     "dart",
-    tsdart.language(),
+    "tree_sitter_dart:language",
     {".dart"},
     DART_QUERY,
     config_names=None,
     skipped_suffixes=(".g.dart",),
 )
-BASH = _make("bash", tsbash.language(), {".sh", ".bash"}, BASH_QUERY)
+BASH = _make("bash", "tree_sitter_bash:language", {".sh", ".bash"}, BASH_QUERY)
 LUA = _make(
-    "lua", tslua.language(), {".lua"}, LUA_QUERY, code_values=frozenset({"function_definition"})
+    "lua",
+    "tree_sitter_lua:language",
+    {".lua"},
+    LUA_QUERY,
+    code_values=frozenset({"function_definition"}),
 )
 # Attributes that document or type a module rather than configure it.
 _ELIXIR_CONFIG = re.compile(
@@ -701,12 +709,18 @@ _ELIXIR_CONFIG = re.compile(
     r"|before_compile|after_compile|on_definition|deprecated)$)[a-z_][A-Za-z0-9_]*$"
 )
 ELIXIR = _make(
-    "elixir", tselixir.language(), {".ex", ".exs"}, ELIXIR_QUERY, config_names=_ELIXIR_CONFIG
+    "elixir",
+    "tree_sitter_elixir:language",
+    {".ex", ".exs"},
+    ELIXIR_QUERY,
+    config_names=_ELIXIR_CONFIG,
 )
-HASKELL = _make("haskell", tshaskell.language(), {".hs"}, HASKELL_QUERY, config_names=None)
+HASKELL = _make(
+    "haskell", "tree_sitter_haskell:language", {".hs"}, HASKELL_QUERY, config_names=None
+)
 JULIA = _make(
     "julia",
-    tsjulia.language(),
+    "tree_sitter_julia:language",
     {".jl"},
     JULIA_QUERY,
     config_names=None,
@@ -714,7 +728,7 @@ JULIA = _make(
 )
 ZIG = _make(
     "zig",
-    tszig.language(),
+    "tree_sitter_zig:language",
     {".zig"},
     ZIG_QUERY,
     code_values=frozenset(
@@ -728,9 +742,13 @@ ZIG = _make(
         }
     ),
 )
-OCAML = _make("ocaml", tsocaml.language_ocaml(), {".ml"}, OCAML_QUERY, config_names=None)
+OCAML = _make("ocaml", "tree_sitter_ocaml:language_ocaml", {".ml"}, OCAML_QUERY, config_names=None)
 OCAML_INTERFACE = _make(
-    "ocaml-interface", tsocaml.language_ocaml_interface(), {".mli"}, OCAML_QUERY, config_names=None
+    "ocaml-interface",
+    "tree_sitter_ocaml:language_ocaml_interface",
+    {".mli"},
+    OCAML_QUERY,
+    config_names=None,
 )
 
 QUERY_LANGUAGES = (
