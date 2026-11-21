@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 from starlette.concurrency import run_in_threadpool
 
-from whycode.api import answers, auth, guard, lineage, reads, repos
+from whycode.api import answers, auth, guard, limits, lineage, reads, repos
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -74,6 +74,19 @@ def get_attempts():
     except (psycopg.Error, ConfigError):
         return auth.get_attempts()
     return auth.PgAttempts(store)  # through the store, so it reconnects too
+
+
+@lru_cache(maxsize=1)
+def _pg_calls() -> limits.PgCalls:
+    return limits.PgCalls(_gap_store())  # tables made once per instance; the store reconnects
+
+
+def get_calls() -> limits.Calls:
+    """Limited calls counted in Postgres, shared by every instance; in memory if it is down."""
+    try:
+        return _pg_calls()
+    except (psycopg.Error, ConfigError):
+        return limits.get_calls()
 
 
 def get_gaps() -> GapStore:
@@ -132,6 +145,14 @@ def gap_queue(run: Run, gaps: GapStore | None, repo: str, entity_id: str | None 
 RunDep = Annotated[Run, Depends(get_run)]
 RepoDep = Annotated[str, Depends(repo_param)]
 
+
+def caller(request: Request, user: Annotated[auth.User | None, Depends(auth.require_user)]) -> str:
+    """Who a limited call is counted against: the signed-in login, else the client address."""
+    return f"user:{user.login.lower()}" if user else f"ip:{auth._client(request)}"
+
+
+CallerDep = Annotated[str, Depends(caller)]
+CallsDep = Annotated[limits.Calls, Depends(limits.get_calls)]
 router = APIRouter(prefix="/api", dependencies=[Depends(auth.require_user)])
 
 
@@ -164,10 +185,11 @@ def get_entity(run: RunDep, repo: RepoDep, id: str):
 
 
 @router.post("/ask", response_model=m.Answer)
-def ask(run: RunDep, body: m.AskRequest):
+def ask(run: RunDep, body: m.AskRequest, who: CallerDep, calls: CallsDep):
     repo_id = _normalize(body.repo)
     repo = require_repo(run, repo_id)
     selected = require_entity(run, repo_id, body.entity_id) if body.entity_id else None
+    limits.enforce(calls, "ask", who)
     return answers.ask(run, repo, body.question, selected)
 
 
@@ -196,8 +218,11 @@ def check_pull(
     run: RunDep,
     body: m.GuardRequest,
     client: Annotated[httpx.Client, Depends(guard.http_client)],
+    who: CallerDep,
+    calls: CallsDep,
 ):
     repo = require_repo(run, _normalize(body.repo))
+    limits.enforce(calls, "guard", who)
     with client:
         return guard.check(run, repo, body.pull, guard.GitHubReader(client, guard._token()))
 
@@ -340,6 +365,7 @@ async def _lifespan(_app: FastAPI):
     if _gap_store.cache_info().currsize:
         _gap_store().close()
         _gap_store.cache_clear()
+    _pg_calls.cache_clear()
 
 
 # The API serves JSON and redirects only: nothing on it may be framed, sniffed or run as a page.
@@ -393,6 +419,7 @@ def create_app() -> FastAPI:
         return JSONResponse({"detail": str(exc)}, status_code=503)  # names only, never values
 
     app.dependency_overrides[auth.get_attempts] = get_attempts
+    app.dependency_overrides[limits.get_calls] = get_calls
     app.include_router(auth.router)
     app.include_router(ops)
     app.include_router(router)
