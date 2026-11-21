@@ -173,7 +173,7 @@ def test_jsx_and_module_files_are_read():
         assert is_supported(path)
 
 
-@pytest.mark.parametrize("path", ["dist/app.min.js", "src/a.kt", "src/a.swift", "a.json"])
+@pytest.mark.parametrize("path", ["dist/app.min.js", "src/a.clj", "src/a.erl", "a.json"])
 def test_minified_bundles_and_unread_languages_are_not_read(path):
     assert not is_supported(path)
     with pytest.raises(UnsupportedFileError):

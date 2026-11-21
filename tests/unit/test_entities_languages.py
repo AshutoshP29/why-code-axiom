@@ -454,7 +454,9 @@ def test_each_suffix_reads_with_its_language(path, language):
     assert is_supported(path)
 
 
-@pytest.mark.parametrize("path", ["api/v1/user.pb.go", "Form1.Designer.cs", "Gen.g.cs", "a.kt"])
+@pytest.mark.parametrize(
+    "path", ["api/v1/user.pb.go", "Form1.Designer.cs", "Gen.g.cs", "a.clj", "a.erl", "a.r"]
+)
 def test_generated_files_and_other_languages_are_left_out(path):
     assert not is_supported(path)
 

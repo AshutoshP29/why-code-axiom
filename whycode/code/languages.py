@@ -28,16 +28,28 @@ import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+import tree_sitter_bash as tsbash
 import tree_sitter_c as tsc
 import tree_sitter_c_sharp as tscsharp
 import tree_sitter_cpp as tscpp
+import tree_sitter_dart as tsdart
+import tree_sitter_elixir as tselixir
 import tree_sitter_go as tsgo
+import tree_sitter_haskell as tshaskell
 import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
+import tree_sitter_julia as tsjulia
+import tree_sitter_kotlin as tskotlin
+import tree_sitter_lua as tslua
+import tree_sitter_objc as tsobjc
+import tree_sitter_ocaml as tsocaml
 import tree_sitter_php as tsphp
 import tree_sitter_ruby as tsruby
 import tree_sitter_rust as tsrust
+import tree_sitter_scala as tsscala
+import tree_sitter_swift as tsswift
 import tree_sitter_typescript as tsts
+import tree_sitter_zig as tszig
 from tree_sitter import Language, Query
 
 # Two characters or more, so single-letter type variables ("T") are not config.
@@ -362,6 +374,224 @@ CPP_QUERY = f"""
 
 _C_DECLARATORS = frozenset({"function_declarator", "pointer_declarator", "reference_declarator"})
 
+# Kotlin ---------------------------------------------------------------------------------------
+
+# Classes cover interfaces, data, enum and sealed classes; objects count too. A companion
+# object's members belong to the class around it. Extension functions are named after the type
+# they extend ("Router.ext"). Constants are `const val`.
+KOTLIN_QUERY = """
+(class_declaration name: (identifier) @name) @class
+(object_declaration name: (identifier) @name) @class
+
+(function_declaration name: (identifier) @name) @function
+(function_declaration (user_type (identifier) @owner) . name: (identifier) @name) @function
+
+((property_declaration (modifiers (property_modifier) @mod)
+   (variable_declaration (identifier) @name) . (_) @value) @config
+ (#eq? @mod "const"))
+"""
+
+# Swift ----------------------------------------------------------------------------------------
+
+# class, struct, enum and actor declarations are class_declaration; an extension only names what
+# is inside it. Constants are `let` at file level and `static let` in a type.
+SWIFT_QUERY = """
+(class_declaration name: (type_identifier) @name) @class
+(class_declaration name: (user_type (type_identifier) @name)) @scope
+(protocol_declaration name: (type_identifier) @name) @class
+
+(function_declaration name: (simple_identifier) @name) @function
+(protocol_function_declaration name: (simple_identifier) @name) @signature
+(init_declaration "init" @name) @function
+(deinit_declaration "deinit" @name) @function
+
+((source_file (property_declaration (value_binding_pattern) @kind
+   name: (pattern bound_identifier: (simple_identifier) @name) value: (_) @value) @config)
+ (#eq? @kind "let"))
+((property_declaration (modifiers (property_modifier) @mod) (value_binding_pattern) @kind
+   name: (pattern bound_identifier: (simple_identifier) @name) value: (_) @value) @config
+ (#eq? @mod "static") (#eq? @kind "let"))
+"""
+
+# Scala ----------------------------------------------------------------------------------------
+
+# Constants are vals in an object or at file level, named the Scala way (MaxRetries, MAX).
+SCALA_QUERY = """
+(class_definition name: (identifier) @name) @class
+(object_definition name: (identifier) @name) @class
+(trait_definition name: (identifier) @name) @class
+(enum_definition name: (identifier) @name) @class
+
+(function_definition name: (identifier) @name) @function
+(function_declaration name: (identifier) @name) @signature
+
+(object_definition body: (template_body
+  (val_definition pattern: (identifier) @name value: (_) @value) @config))
+(compilation_unit (val_definition pattern: (identifier) @name value: (_) @value) @config)
+
+(parameters (parameter name: (identifier) @name default_value: (_) @value) @default)
+"""
+
+# Dart -----------------------------------------------------------------------------------------
+
+_DART_SIGNATURE = (
+    "[(function_signature name: (identifier) @name) (getter_signature name: (identifier) @name)"
+    " (setter_signature name: (identifier) @name)"
+    " (constructor_signature name: (identifier) @name)]"
+)
+# A method's body follows its signature as a sibling, so @end stretches the method over it. An
+# extension names its methods after the type it extends. Constants are `const`.
+DART_QUERY = f"""
+(class_definition name: (identifier) @name) @class
+(mixin_declaration (mixin) . (identifier) @name) @class
+(enum_declaration name: (identifier) @name) @class
+(extension_declaration class: (type_identifier) @name) @scope
+
+((method_signature {_DART_SIGNATURE}) @function . (function_body) @end)
+((function_signature name: (identifier) @name) @function . (function_body) @end)
+(declaration (constructor_signature name: (identifier) @name)) @function
+(declaration (function_signature name: (identifier) @name)) @signature
+
+(program (const_builtin) . (static_final_declaration_list
+  (static_final_declaration (identifier) @name . (_) @value) @config))
+(declaration (const_builtin) . (static_final_declaration_list
+  (static_final_declaration (identifier) @name . (_) @value) @config))
+"""
+
+# Bash -----------------------------------------------------------------------------------------
+
+# Functions; UPPER_CASE variables set at file level (also through readonly, export, declare).
+BASH_QUERY = """
+(function_definition name: (word) @name) @function
+
+(program (variable_assignment name: (variable_name) @name value: (_) @value) @config)
+(program (declaration_command (variable_assignment name: (variable_name) @name value: (_) @value))
+  @config)
+"""
+
+# Lua ------------------------------------------------------------------------------------------
+
+# `function M.handle()` and `M.extra = function() end` are named after their table ("M.handle").
+LUA_QUERY = """
+(function_declaration name: (identifier) @name) @function
+(function_declaration
+  name: (dot_index_expression table: (identifier) @owner field: (identifier) @name)) @function
+(function_declaration
+  name: (method_index_expression table: (identifier) @owner method: (identifier) @name)) @function
+(assignment_statement
+  (variable_list name: (dot_index_expression table: (identifier) @owner field: (identifier) @name))
+  (expression_list value: (function_definition))) @function
+(variable_declaration (assignment_statement (variable_list name: (identifier) @name)
+  (expression_list value: (function_definition)))) @function
+
+(chunk (variable_declaration (assignment_statement (variable_list name: (identifier) @name)
+  (expression_list value: (_) @value))) @config)
+"""
+
+# Elixir ---------------------------------------------------------------------------------------
+
+# Everything is a call: `defmodule App.Router do`, `def handle(x)`, `defp`, macros and guards.
+# Module attributes (`@timeout 5000`) are config, except the documentation and typing ones.
+ELIXIR_QUERY = """
+((call target: (identifier) @kw (arguments (alias) @name)) @class
+ (#any-of? @kw "defmodule" "defprotocol"))
+
+((call target: (identifier) @kw
+   (arguments [(call target: (identifier) @name) (identifier) @name
+               (binary_operator left: (call target: (identifier) @name))])) @function
+ (#any-of? @kw "def" "defp" "defmacro" "defmacrop" "defguard" "defguardp" "defdelegate"))
+
+((unary_operator operator: "@" operand: (call target: (identifier) @name (arguments . (_) @value)))
+  @config)
+"""
+
+# Haskell --------------------------------------------------------------------------------------
+
+# Data types, newtypes, type classes and synonyms are classes; an instance names its functions
+# after the class. Functions are equations with parameters; a top-level binding to a literal
+# (`maxRetries = 3`) is config.
+HASKELL_QUERY = """
+(data_type name: (name) @name) @class
+(newtype name: (name) @name) @class
+(class name: (name) @name) @class
+(type_synonym name: (name) @name) @class
+(instance name: (name) @name) @scope
+
+(function name: (variable) @name) @function
+(class_declarations (signature name: (variable) @name) @signature)
+
+(declarations (bind name: (variable) @name match: (match expression: (literal) @value)) @config)
+"""
+
+# Objective-C ----------------------------------------------------------------------------------
+
+# C's patterns plus @interface, @implementation and @protocol; a method is named by the first part
+# of its selector (`- (void)handle:(id)x retries:(int)n` is "handle").
+OBJC_QUERY = f"""
+{_C_RECORDS}
+(class_interface . (identifier) @name) @class
+(class_implementation . (identifier) @name) @class
+(protocol_declaration . (identifier) @name) @class
+
+(method_definition (method_type) . (identifier) @name) @function
+(method_definition . (identifier) @name) @function
+(method_declaration (method_type) . (identifier) @name) @signature
+(method_declaration . (identifier) @name) @signature
+(function_definition declarator: {_C_FN.format(n=_C_NAME)}) @function
+{_at_top(f"(declaration declarator: {_C_FN.format(n=_C_NAME)}) @signature", _C_TOP)}
+
+(preproc_def name: (identifier) @name value: (_) @value) @config
+{_at_top(f"((declaration (type_qualifier) @q declarator: {_C_CONST}) @config {_IS_CONST})", _C_TOP)}
+"""
+
+# Julia ----------------------------------------------------------------------------------------
+
+JULIA_QUERY = """
+(module_definition name: (identifier) @name) @class
+(struct_definition (type_head (identifier) @name)) @class
+(abstract_definition (type_head (identifier) @name)) @class
+
+(function_definition (signature (call_expression . (identifier) @name))) @function
+(assignment . (call_expression . (identifier) @name)) @function
+(macro_definition (signature (call_expression . (identifier) @name))) @function
+
+(const_statement (assignment . (identifier) @name (operator) . (_) @value)) @config
+
+(argument_list (named_argument . (identifier) @name (operator) . (_) @value) @default)
+"""
+
+# Zig ------------------------------------------------------------------------------------------
+
+# A type is a constant bound to a struct, enum, union or opaque ("const Router = struct {...}").
+# Other UPPER_CASE constants are config.
+ZIG_QUERY = """
+(variable_declaration (identifier) @name
+  [(struct_declaration) (enum_declaration) (union_declaration) (opaque_declaration)]) @class
+
+(function_declaration name: (identifier) @name) @function
+
+(variable_declaration "const" (identifier) @name (_) @value .) @config
+"""
+
+# OCaml ----------------------------------------------------------------------------------------
+
+# Modules, module types, classes and types are classes. A let with parameters (or bound to `fun`)
+# is a function; a top-level let bound to a literal is config.
+OCAML_QUERY = """
+(module_definition (module_binding (module_name) @name)) @class
+(module_type_definition (module_type_name) @name) @class
+(class_definition (class_binding (class_name) @name)) @class
+(type_definition (type_binding name: (type_constructor) @name)) @class
+
+(let_binding pattern: (value_name) @name (parameter)) @function
+(let_binding pattern: (value_name) @name body: [(fun_expression) (function_expression)]) @function
+(method_definition (method_name) @name) @function
+(value_specification (value_name) @name) @signature
+
+(value_definition (let_binding pattern: (value_name) @name
+  body: [(number) (string) (boolean) (signed_number)] @value)) @config
+"""
+
 # ----------------------------------------------------------------------------------------------
 
 JAVASCRIPT = _make(
@@ -417,7 +647,16 @@ PHP = _make(
     ref_names=None,
     member_name_field={"class_constant_access_expression": None},
 )
-C = _make("c", tsc.language(), {".c"}, C_QUERY, declarator_types=_C_DECLARATORS)
+OBJC = _make(
+    "objc",
+    tsobjc.language(),
+    {".m", ".mm"},
+    OBJC_QUERY,
+    config_names=CPP_CONSTANT,  # Apple names constants kName too
+    declarator_types=_C_DECLARATORS,
+)
+# A C file the C grammar trips on may be Objective-C, which extends C.
+C = _make("c", tsc.language(), {".c"}, C_QUERY, declarator_types=_C_DECLARATORS, fallback=OBJC)
 _CPP = {
     "code_values": frozenset({"lambda_expression"}),
     "config_names": CPP_CONSTANT,
@@ -428,10 +667,99 @@ _CPP = {
 CPP = _make(
     "cpp", tscpp.language(), {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"}, CPP_QUERY, **_CPP
 )
-# A .h header is read as C++ (which also reads most C), and as C when C++ finds syntax errors.
+# A .h header is read as C++ (which also reads most C), then as C and as Objective-C when the
+# one before finds syntax errors.
 HEADER = _make("c-or-cpp-header", tscpp.language(), {".h"}, CPP_QUERY, fallback=C, **_CPP)
+KOTLIN = _make("kotlin", tskotlin.language(), {".kt", ".kts"}, KOTLIN_QUERY, config_names=None)
+SWIFT = _make("swift", tsswift.language(), {".swift"}, SWIFT_QUERY, config_names=None)
+_SCALA_CONSTANT = re.compile(r"^[A-Z][A-Za-z0-9_]*$")  # MaxRetries or MAX_RETRIES
+SCALA = _make(
+    "scala",
+    tsscala.language(),
+    {".scala", ".sc"},
+    SCALA_QUERY,
+    config_names=_SCALA_CONSTANT,
+    ref_names=_SCALA_CONSTANT,
+    member_name_field={"field_expression": "field"},
+)
+DART = _make(
+    "dart",
+    tsdart.language(),
+    {".dart"},
+    DART_QUERY,
+    config_names=None,
+    skipped_suffixes=(".g.dart",),
+)
+BASH = _make("bash", tsbash.language(), {".sh", ".bash"}, BASH_QUERY)
+LUA = _make(
+    "lua", tslua.language(), {".lua"}, LUA_QUERY, code_values=frozenset({"function_definition"})
+)
+# Attributes that document or type a module rather than configure it.
+_ELIXIR_CONFIG = re.compile(
+    r"^(?!(moduledoc|doc|typedoc|spec|type|typep|opaque|callback|macrocallback|impl|behaviour"
+    r"|derive|enforce_keys|external_resource|compile|dialyzer|on_load|vsn|optional_callbacks"
+    r"|before_compile|after_compile|on_definition|deprecated)$)[a-z_][A-Za-z0-9_]*$"
+)
+ELIXIR = _make(
+    "elixir", tselixir.language(), {".ex", ".exs"}, ELIXIR_QUERY, config_names=_ELIXIR_CONFIG
+)
+HASKELL = _make("haskell", tshaskell.language(), {".hs"}, HASKELL_QUERY, config_names=None)
+JULIA = _make(
+    "julia",
+    tsjulia.language(),
+    {".jl"},
+    JULIA_QUERY,
+    config_names=None,
+    declarator_types=frozenset({"call_expression", "signature"}),
+)
+ZIG = _make(
+    "zig",
+    tszig.language(),
+    {".zig"},
+    ZIG_QUERY,
+    code_values=frozenset(
+        {
+            "builtin_function",
+            "struct_declaration",
+            "enum_declaration",
+            "union_declaration",
+            "opaque_declaration",
+            "error_set_declaration",
+        }
+    ),
+)
+OCAML = _make("ocaml", tsocaml.language_ocaml(), {".ml"}, OCAML_QUERY, config_names=None)
+OCAML_INTERFACE = _make(
+    "ocaml-interface", tsocaml.language_ocaml_interface(), {".mli"}, OCAML_QUERY, config_names=None
+)
 
-QUERY_LANGUAGES = (JAVASCRIPT, TYPESCRIPT, TSX, JAVA, GO, CSHARP, RUST, RUBY, PHP, C, CPP, HEADER)
+QUERY_LANGUAGES = (
+    JAVASCRIPT,
+    TYPESCRIPT,
+    TSX,
+    JAVA,
+    GO,
+    CSHARP,
+    RUST,
+    RUBY,
+    PHP,
+    C,
+    CPP,
+    HEADER,
+    OBJC,
+    KOTLIN,
+    SWIFT,
+    SCALA,
+    DART,
+    BASH,
+    LUA,
+    ELIXIR,
+    HASKELL,
+    JULIA,
+    ZIG,
+    OCAML,
+    OCAML_INTERFACE,
+)
 
 
 def language_for(path: str) -> QueryLanguage | None:

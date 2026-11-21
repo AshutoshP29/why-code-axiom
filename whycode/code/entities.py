@@ -1,8 +1,9 @@
 """Code entities in one source file, parsed with tree-sitter: File, Class, Function, ConfigKey.
 
-Python is read by the walker below. JavaScript, TypeScript, Java, Go, C#, Rust, Ruby, PHP, C and
-C++ are read by running each language's query from whycode/code/languages.py (_QueryWalker), with
-the same rules wherever the language has the construct.
+Python is read by the walker below. The other 22 languages (JavaScript, TypeScript, Java, Go, C#,
+Rust, Ruby, PHP, C, C++, Objective-C, Kotlin, Swift, Scala, Dart, Bash, Lua, Elixir, Haskell,
+Julia, Zig, OCaml) are read by running each one's query from whycode/code/languages.py
+(_QueryWalker), with the same rules wherever the language has the construct.
 
 Only parsing lives here. The caller supplies the file's text (from disk or a git blob) and gets
 back entities with graph ids from whycode/ids.py; writing them to Neo4j is someone else's job.
@@ -20,21 +21,28 @@ Rules:
 - A file with syntax errors still yields whatever tree-sitter recovered, with the flag set.
 
 The other languages, as their queries in languages.py find them:
-- Classes are each language's type declarations: classes, interfaces, enums, records, structs,
-  unions, traits, Ruby modules, C typedefs of unnamed structs. Rust `impl`/`mod` blocks and
-  TypeScript namespaces only name what is inside them; C++, Java and C# namespaces are left out.
+- Classes are each language's type declarations: classes, interfaces, protocols, enums, records,
+  structs, unions, traits, objects, mixins, C typedefs of unnamed structs, Haskell data types and
+  type classes, Zig containers bound to a name; and modules where a language groups functions in
+  them (Ruby, Elixir, Julia, OCaml). Rust `impl`/`mod` blocks, Swift and Dart extensions,
+  Haskell instances and TypeScript namespaces only name what is inside them; C++, Java and C#
+  namespaces are left out of names.
 - Functions are functions, methods (constructors, getters and setters included), C# properties,
-  and in JavaScript/TypeScript functions assigned to a name: `const f = () => {}`,
-  `res.send = function send() {}` ("send"). Callbacks passed as arguments are not entities.
+  and functions assigned to a name: `const f = () => {}`, `res.send = function send() {}`
+  ("send"), Lua's `M.extra = function() end`. Callbacks passed as arguments are not entities.
   A Go method is named after its receiver's type ("Router.Handle"), a C++ method defined
-  outside its class after the class ("Router::serve" is "Router.serve"). A prototype or a
-  declaration without a body counts only when the file has no definition with its name.
+  outside its class after the class ("Router::serve" is "Router.serve"), a Kotlin extension
+  function after the type it extends, a Lua function after its table ("M.handle"). A prototype
+  or a declaration without a body counts only when the file has no definition with its name.
 - ConfigKeys are constants, inside a class as "Class.NAME": UPPER_CASE top-level `const`/`let`/
   `var` in JavaScript/TypeScript (class fields are not, as for Python), UPPER_CASE `static
-  final` fields in Java, and any `const` in Go, C#, Rust and PHP, C# `readonly` fields with a
-  value, Rust `static`s, Ruby constants, C/C++ `#define`s and UPPER_CASE (or C++ kName)
-  `const`/`constexpr` variables. Also parameter defaults that reference a constant
-  (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`).
+  final` fields in Java, and any `const` in Go, C#, Rust, PHP, Dart and Julia, C# `readonly`
+  fields with a value, Rust `static`s, Ruby constants, C/C++/Objective-C `#define`s and
+  UPPER_CASE (or kName) `const`/`constexpr` variables, Kotlin `const val`, Swift `let` at file
+  level and `static let`, Scala vals in an object named MaxRetries or MAX_RETRIES, Elixir module
+  attributes (not documentation or types), Haskell and OCaml top-level bindings to a literal,
+  UPPER_CASE Zig `const`s, Bash and Lua UPPER_CASE variables set at file level. Also parameter
+  defaults that reference a constant (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`).
 """
 
 import re
@@ -130,10 +138,15 @@ def parse_file(repo: str, path: str, source: bytes | str) -> ParsedFile:
         tree = Parser(_LANGUAGE).parse(data)
         return _Walker(normalize_repo(repo), path).run(tree.root_node, data)
     tree = Parser(lang.language).parse(data)
-    if tree.root_node.has_error and lang.fallback is not None:
-        other = Parser(lang.fallback.language).parse(data)
-        if not other.root_node.has_error:  # a .h that is C, not C++
-            lang, tree = lang.fallback, other
+    # A .h that is C or Objective-C, not C++: the first grammar in the chain that reads it
+    # without errors, else the first one.
+    candidate = lang.fallback
+    while tree.root_node.has_error and candidate is not None:
+        other = Parser(candidate.language).parse(data)
+        if not other.root_node.has_error:
+            lang, tree = candidate, other
+            break
+        candidate = candidate.fallback
     return _QueryWalker(normalize_repo(repo), path, lang).run(tree.root_node, data)
 
 
@@ -317,9 +330,14 @@ class _Definition:
     node: Node
     owner: str | None = None  # the type a method declared outside it belongs to (Go, C++)
     signature: bool = False  # declared without a body; a definition with its id wins
+    end: Node | None = None  # a body that follows the definition's node (Dart)
     qualified: str = ""
     id: str = ""
     parent: "_Definition | None" = None
+
+    @property
+    def end_byte(self) -> int:
+        return (self.end or self.node).end_byte
 
 
 def _name_text(node: Node) -> str:
@@ -327,7 +345,7 @@ def _name_text(node: Node) -> str:
     text = _text(node)
     if node.type == "string" and len(text) >= 2:
         text = text[1:-1]
-    return " ".join(text.split())
+    return " ".join(text.split()).strip("`")  # Swift, Kotlin and Scala escape names in backticks
 
 
 _KIND_BY_CAPTURE = {
@@ -373,18 +391,18 @@ class _QueryWalker:
                     defaults.append((caps["default"][0], name, value))
             elif capture := next((c for c in _KIND_BY_CAPTURE if c in caps), None):
                 node = caps[capture][0]
+                end = caps["end"][0] if "end" in caps else None
                 owner = _name_text(caps["owner"][0]) if "owner" in caps else None
                 text, owner = _split_owner(_name_text(name), owner)
-                if text:
-                    spans.setdefault(
-                        (node.start_byte, node.end_byte),
-                        _Definition(
-                            _KIND_BY_CAPTURE[capture], text, node, owner, capture == "signature"
-                        ),
-                    )
-        defs = self._nest(
-            sorted(spans.values(), key=lambda d: (d.node.start_byte, -d.node.end_byte))
-        )
+                if not text:
+                    continue
+                key = (node.start_byte, (end or node).end_byte)
+                if key not in spans:
+                    kind = _KIND_BY_CAPTURE[capture]
+                    spans[key] = _Definition(kind, text, node, owner, capture == "signature", end)
+                elif owner is not None and spans[key].owner is None:
+                    spans[key].owner = owner  # a second pattern names the owner (Kotlin)
+        defs = self._nest(sorted(spans.values(), key=lambda d: (d.node.start_byte, -d.end_byte)))
         classes = {d.qualified: d for d in defs if d.kind is EntityKind.CLASS}
 
         # A function the file defines is that definition, not its prototype or declaration.
@@ -397,12 +415,15 @@ class _QueryWalker:
                 parent_id = classes[d.owner].id if d.owner in classes else self.file_id
             else:
                 parent_id = self._parent_id(d.parent, classes)
-            found.append(
-                (d.node, self._entity(d.id, d.kind, d.name, d.qualified, d.node, parent_id))
-            )
+            entity = self._entity(d.id, d.kind, d.name, d.qualified, d.node, parent_id, end=d.end)
+            found.append((d.node.start_byte, d.end_byte, entity))
+        functions = [(d.name, d.node.start_byte) for d in defs if d.kind is EntityKind.FUNCTION]
         for stmt, name_node, value in configs:
-            name = _text(name_node)
+            name = _name_text(name_node)
             if value.type in self.lang.code_values or not self._is_config_name(name):
+                continue
+            # A binding also found as a function there (OCaml's `let handle req = 0`) is one.
+            if any(n == name and stmt.start_byte <= s <= stmt.end_byte for n, s in functions):
                 continue
             holder = self._innermost(stmt, defs)
             entity = self._entity(
@@ -414,12 +435,12 @@ class _QueryWalker:
                 self._parent_id(holder, classes),
                 _value_text(value),
             )
-            found.append((stmt, entity))
+            found.append((stmt.start_byte, stmt.end_byte, entity))
         for param, name_node, value in defaults:
             owner = self._owner(param, defs)
             if owner is None or not self._references_constant(value):
                 continue
-            name = _text(name_node)
+            name = _name_text(name_node)
             entity = self._entity(
                 make_id(self.repo, "cfg", name),
                 EntityKind.CONFIG_KEY,
@@ -429,7 +450,7 @@ class _QueryWalker:
                 owner.id,
                 _value_text(value),
             )
-            found.append((param, entity))
+            found.append((param.start_byte, param.end_byte, entity))
 
         base = PurePosixPath(self.path).name
         entities = {
@@ -447,11 +468,13 @@ class _QueryWalker:
         }
         # Source order, outer before inner; an id seen twice (a getter and its setter) keeps the
         # first.
-        for _, e in sorted(found, key=lambda f: (f[0].start_byte, -f[0].end_byte)):
+        for _, _, e in sorted(found, key=lambda f: (f[0], -f[1])):
             entities.setdefault(e.id, e)
         return ParsedFile(self.path, tuple(entities.values()), root.has_error)
 
-    def _entity(self, id_, kind, name, qualified, node, parent_id, value=None) -> CodeEntity:
+    def _entity(
+        self, id_, kind, name, qualified, node, parent_id, value=None, end=None
+    ) -> CodeEntity:
         return CodeEntity(
             id_,
             self.repo,
@@ -460,7 +483,7 @@ class _QueryWalker:
             qualified,
             self.path,
             node.start_point[0] + 1,
-            _end_line(node),
+            _end_line(end or node),
             parent_id,
             value,
         )
@@ -470,7 +493,7 @@ class _QueryWalker:
         innermost definition or scope around it. A method with an owner is "Owner.name"."""
         stack: list[_Definition] = []
         for d in defs:
-            while stack and stack[-1].node.end_byte < d.node.end_byte:
+            while stack and stack[-1].end_byte < d.end_byte:
                 stack.pop()
             d.parent = stack[-1] if stack else None
             if d.owner is not None:
@@ -499,7 +522,7 @@ class _QueryWalker:
         """The innermost definition or scope strictly around `node` (defs sorted outer first)."""
         around = None
         for d in defs:
-            span = (d.node.start_byte, d.node.end_byte)
+            span = (d.node.start_byte, d.end_byte)
             inside = span[0] <= node.start_byte and node.end_byte <= span[1]
             if inside and span != (node.start_byte, node.end_byte):
                 around = d
