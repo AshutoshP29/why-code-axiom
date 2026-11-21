@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import type { Repo, RepoStatus } from '../api/types'
 import { parseRepoInput } from '../lib/entity'
+import { INGEST_ACTIONS } from '../lib/features'
 import { formatCompact, formatRelative } from '../lib/format'
 import { useDismiss, useNow } from '../lib/hooks'
 import { stageSummary } from '../lib/stages'
@@ -153,21 +154,23 @@ export function RepoSwitcher() {
             ))}
             {shown.length === 0 && <li className="px-3 py-2 text-xs text-faint">No repository matches “{filter}”.</li>}
           </ul>
-          <div className="mt-2 border-t border-line pt-2">
-            <button
-              type="button"
-              onClick={startAdding}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-raised"
-            >
-              <span aria-hidden className="grid size-7 place-items-center rounded-full border border-teal/50 text-teal">
-                +
-              </span>
-              <span>
-                <span className="block text-sm font-semibold text-teal">Add a repository</span>
-                <span className="block text-xs text-faint">Paste a GitHub link or type owner/name</span>
-              </span>
-            </button>
-          </div>
+          {INGEST_ACTIONS && (
+            <div className="mt-2 border-t border-line pt-2">
+              <button
+                type="button"
+                onClick={startAdding}
+                className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left hover:bg-raised"
+              >
+                <span aria-hidden className="grid size-7 place-items-center rounded-full border border-teal/50 text-teal">
+                  +
+                </span>
+                <span>
+                  <span className="block text-sm font-semibold text-teal">Add a repository</span>
+                  <span className="block text-xs text-faint">Paste a GitHub link or type owner/name</span>
+                </span>
+              </button>
+            </div>
+          )}
         </div>
       )}
 

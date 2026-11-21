@@ -2,6 +2,7 @@ import { Link, NavLink } from 'react-router'
 import { useApi } from '../api/context'
 import { useEntity, useSyncRepo } from '../api/queries'
 import type { EntityKind, Repo } from '../api/types'
+import { INGEST_ACTIONS } from '../lib/features'
 import { formatRelative } from '../lib/format'
 import { useNow } from '../lib/hooks'
 import { cx } from '../lib/tones'
@@ -96,14 +97,16 @@ function SyncChip({ repo }: { repo: Repo }) {
             ? `Synced ${formatRelative(repo.last_synced_at, now)}`
             : 'Not synced yet'}
       </span>
-      <button
-        type="button"
-        onClick={() => sync.mutate(repo.id)}
-        disabled={sync.isPending}
-        className="font-semibold text-teal hover:underline disabled:text-faint"
-      >
-        Sync now
-      </button>
+      {INGEST_ACTIONS && (
+        <button
+          type="button"
+          onClick={() => sync.mutate(repo.id)}
+          disabled={sync.isPending}
+          className="font-semibold text-teal hover:underline disabled:text-faint"
+        >
+          Sync now
+        </button>
+      )}
     </div>
   )
 }

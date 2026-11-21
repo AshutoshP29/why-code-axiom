@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useIngestion, useReingest } from '../api/queries'
 import { Badge, Button, ErrorNotice, Loading, ProgressBar } from '../components/ui'
+import { INGEST_ACTIONS } from '../lib/features'
 import { INGEST_STAGE_TITLE, STATE_TONE } from '../lib/stages'
 import { BADGE_TONE, cx } from '../lib/tones'
 import { useRepo } from '../state/repo-context'
@@ -70,9 +71,11 @@ export function IngestionView({ repoId }: { repoId: string }) {
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {stopped ? (
             <>
-              <Button variant="primary" disabled={reingest.isPending} onClick={() => reingest.mutate(repoId)}>
-                {reingest.isPending ? 'Starting…' : 'Run it again'}
-              </Button>
+              {INGEST_ACTIONS && (
+                <Button variant="primary" disabled={reingest.isPending} onClick={() => reingest.mutate(repoId)}>
+                  {reingest.isPending ? 'Starting…' : 'Run it again'}
+                </Button>
+              )}
               <Button onClick={() => allowPartial(repoId)}>Ask about what was read</Button>
             </>
           ) : (
