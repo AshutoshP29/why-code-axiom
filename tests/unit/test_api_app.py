@@ -276,3 +276,15 @@ def test_lifespan_closes_the_driver(monkeypatch):
         pass
     assert closed == [True]
     assert app_module._graph.cache_info().currsize == 0
+
+
+def test_every_response_carries_the_security_headers():
+    c = client(FakeGraph())
+    for res in (c.get("/api/repos"), c.get("/api/nope"), c.post("/api/repos/sync", json={})):
+        assert res.headers["x-content-type-options"] == "nosniff"
+        assert res.headers["x-frame-options"] == "DENY"
+        assert (
+            res.headers["content-security-policy"] == "default-src 'none'; frame-ancestors 'none'"
+        )
+        assert res.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+        assert res.headers["cache-control"] == "no-store"

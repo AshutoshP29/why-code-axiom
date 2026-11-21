@@ -236,8 +236,27 @@ async def _lifespan(_app: FastAPI):
         _gap_store.cache_clear()
 
 
+# The API serves JSON and redirects only: nothing on it may be framed, sniffed or run as a page.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Permissions-Policy": "geolocation=(), camera=(), microphone=()",
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Cache-Control": "no-store",
+}
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="WhyCode API", lifespan=_lifespan)
+
+    @app.middleware("http")
+    async def _security_headers(request: Request, call_next):
+        response = await call_next(request)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
+
     app.add_middleware(
         CORSMiddleware,
         allow_origins=CORS_ORIGINS,
