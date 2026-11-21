@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
-from whycode.api import answers, auth, guard, lineage, reads
+from whycode.api import answers, auth, guard, lineage, reads, repos
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -29,7 +29,6 @@ from whycode.ids import normalize_repo
 
 TARGET_ENV = "WHYCODE_GRAPH_TARGET"
 CORS_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-NOT_IMPLEMENTED = {"detail": "not implemented yet"}
 TEST_POSTGRES_DSN = "postgresql://whycode:whycode_dev_only@127.0.0.1:5433/whycode"  # dev only
 
 
@@ -220,18 +219,52 @@ def keepalive(run: RunDep):
     return {"repos": run(Q_KEEPALIVE, {})[0]["n"]}
 
 
-def _not_implemented():
-    return JSONResponse(NOT_IMPLEMENTED, status_code=501)
+GitHubClientDep = Annotated[httpx.Client, Depends(repos.http_client)]
+UserDep = Annotated[auth.User | None, Depends(auth.require_user)]
 
 
-for _method, _path in [
-    ("POST", "/repos/check"),
-    ("POST", "/repos"),
-    ("POST", "/repos/sync"),
-    ("POST", "/repos/reingest"),
-    ("GET", "/ingestion"),
-]:
-    router.add_api_route(_path, _not_implemented, methods=[_method], status_code=501)
+@router.post("/repos/check", response_model=m.RepoCheck)
+def check_repo(run: RunDep, body: m.RepoCheckRequest, client: GitHubClientDep):
+    repo = repos.parse_repo_input(body.input)
+    with client:
+        return repos.check(run, repos.GitHubFacts(client, guard._token()), repo)
+
+
+@router.post("/repos", response_model=m.Repo)
+def add_repo(run: RunDep, body: m.AddRepoRequest, client: GitHubClientDep, user: UserDep):
+    repo = repos.parse_repo_input(body.repo)
+    with client:
+        return repos.add(
+            run,
+            repos.GitHubFacts(client, guard._token()),
+            repos.Dispatcher.from_env(client),
+            repo,
+            keep_updated=body.keep_updated,
+            login=user.login if user else None,
+        )
+
+
+def _rerun(run: Run, body: m.RepoRequest, client: httpx.Client) -> m.Repo:
+    found = require_repo(run, _normalize(body.repo))
+    with client:
+        return repos.rerun(run, repos.Dispatcher.from_env(client), found)
+
+
+@router.post("/repos/sync", response_model=m.Repo)
+def sync_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep):
+    """Read the pull requests that are new since the last run."""
+    return _rerun(run, body, client)
+
+
+@router.post("/repos/reingest", response_model=m.Repo)
+def reingest_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep):
+    """Run again after an error or a stop: PRs already in the graph are kept, the rest read."""
+    return _rerun(run, body, client)
+
+
+@router.get("/ingestion", response_model=m.Ingestion)
+def get_ingestion(run: RunDep, repo: RepoDep):
+    return reads.ingestion(run, require_repo(run, repo))
 
 
 @asynccontextmanager

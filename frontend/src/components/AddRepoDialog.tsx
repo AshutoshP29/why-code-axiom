@@ -136,7 +136,7 @@ export function AddRepoDialog({ initialInput = '', onClose }: { initialInput?: s
             className={`absolute top-0.5 size-4 rounded-full bg-canvas transition-all ${keepUpdated ? 'left-4.5' : 'left-0.5'}`}
           />
         </button>
-        Keep it up to date (check for changes every 15 minutes)
+        Keep it up to date (read new pull requests once a day)
       </label>
 
       {add.error && (
