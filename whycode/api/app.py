@@ -19,7 +19,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
-from whycode.api import answers, lineage, reads
+from whycode.api import answers, auth, lineage, reads
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -119,7 +119,7 @@ def gap_queue(run: Run, gaps: GapStore | None, repo: str, entity_id: str | None 
 
 RunDep = Annotated[Run, Depends(get_run)]
 RepoDep = Annotated[str, Depends(repo_param)]
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(auth.require_user)])
 
 
 @router.get("/repos", response_model=list[m.Repo])
@@ -187,6 +187,18 @@ def flag_gap(run: RunDep, body: m.GapRequest, gaps: Annotated[GapStore, Depends(
     return gap_queue(run, gaps, repo, body.entity_id)[0]
 
 
+ops = APIRouter(prefix="/api")
+Q_KEEPALIVE = """// q:keepalive
+MATCH (r:Repo) RETURN count(r) AS n
+"""
+
+
+@ops.get("/keepalive", dependencies=[Depends(auth.require_cron)])
+def keepalive(run: RunDep):
+    """Daily Vercel Cron call: one read keeps the free Aura instance from pausing."""
+    return {"repos": run(Q_KEEPALIVE, {})[0]["n"]}
+
+
 def _not_implemented():
     return JSONResponse(NOT_IMPLEMENTED, status_code=501)
 
@@ -243,6 +255,8 @@ def create_app() -> FastAPI:
     async def _config(_request: Request, exc: ConfigError):
         return JSONResponse({"detail": str(exc)}, status_code=503)  # names only, never values
 
+    app.include_router(auth.router)
+    app.include_router(ops)
     app.include_router(router)
     return app
 
