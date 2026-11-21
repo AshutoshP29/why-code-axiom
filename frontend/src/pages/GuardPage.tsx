@@ -87,7 +87,7 @@ function Report({ report }: { report: GuardReport }) {
           {pull.author && <span className="text-xs text-faint">by @{pull.author}</span>}
         </div>
         <p className="mt-2 text-xs text-muted">
-          {plural(report.files_changed, 'file')} changed, {plural(report.python_files_read, 'Python file')} read,{' '}
+          {plural(report.files_changed, 'file')} changed, {plural(report.code_files_read, 'code file')} read,{' '}
           {plural(report.changed.length, 'known function or class', 'known functions or classes')} changed
           {report.changed.length > 0 && `: ${report.changed.map(entityLabel).join(', ')}`}.
         </p>

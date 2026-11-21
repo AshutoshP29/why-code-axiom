@@ -13,9 +13,9 @@ def tiny(tmp_path_factory):
     return root, make_repo(root)
 
 
-def test_python_files_at_head(tiny):
+def test_code_files_at_head(tiny):
     root, _ = tiny
-    assert codemap.python_files(root) == [
+    assert codemap.code_files(root) == [
         "pkg/__init__.py",
         "pkg/core.py",
         "pkg/sub/__init__.py",
@@ -55,7 +55,7 @@ def test_clone_then_update(tiny, tmp_path):
     root, shas = tiny
     dest = tmp_path / "cache" / "owner" / "name"
     assert codemap.clone_or_update(root.as_uri(), dest) == shas["c7"]
-    assert codemap.python_files(dest) == codemap.python_files(root)
+    assert codemap.code_files(dest) == codemap.code_files(root)
     (dest / "pkg" / "core.py").write_text("local edit")  # the cache is ours: reset wipes it
     assert codemap.clone_or_update(root.as_uri(), dest) == shas["c7"]
     assert (dest / "pkg" / "core.py").read_bytes() == (root / "pkg" / "core.py").read_bytes()

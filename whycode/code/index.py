@@ -42,9 +42,9 @@ class PrCodeIndex:
     repo: str
     number: int
     files: list[ChangedFile]
-    parsed: dict[str, ParsedFile]  # keyed by pr_path; Python files only
+    parsed: dict[str, ParsedFile]  # keyed by pr_path; parsed code files only
     tree_known: bool  # False when the current tree was not fetched: paths stay as in the PR
-    missing_code: list[str] = field(default_factory=list)  # Python files whose blob is not stored
+    missing_code: list[str] = field(default_factory=list)  # code files whose blob is not stored
 
     def file_id(self, f: ChangedFile) -> str:
         return make_id(self.repo, "file", f.graph_path)

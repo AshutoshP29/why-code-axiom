@@ -66,7 +66,7 @@ def _render_files(files: list[dict]) -> str:
 
 
 def render_code_outline(index) -> str:
-    """The classes, functions and config keys of each changed Python file, by PR path.
+    """The classes, functions and config keys of each changed code file, by PR path.
 
     `index` is a whycode.code.index.PrCodeIndex. Names are what the parser found in the file as
     the PR left it, so they are the only code names the model may use in "affects".

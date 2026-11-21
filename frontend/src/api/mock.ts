@@ -418,7 +418,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
           opened_at: new Date(now()).toISOString(),
         },
         files_changed: 2,
-        python_files_read: 2,
+        code_files_read: 2,
         changed: hits.map((h) => h.touched[0]),
         hits,
         notes: [],

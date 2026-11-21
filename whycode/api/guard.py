@@ -27,7 +27,7 @@ from whycode.ids import make_id, normalize_repo
 API = "https://api.github.com"
 RAW = "https://raw.githubusercontent.com"
 MAX_FILE_PAGES = 3  # 100 files a page
-MAX_FILES_READ = 40  # Python files parsed per check
+MAX_FILES_READ = 40  # code files parsed per check
 _PULL_URL = re.compile(r"github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", re.IGNORECASE)
 _NUMBER = re.compile(r"#?(\d{1,7})")
 
@@ -141,10 +141,10 @@ def raw_url(head: dict, path: str) -> str:
 
 
 def changed_ids(repo: str, head: dict, files: list[dict], gh: GitHubReader, notes: list[str]):
-    """(ids of the code items the PR's diffs change, ids of its files, Python files read)."""
+    """(ids of the code items the PR's diffs change, ids of its files, code files read)."""
     readable = [f for f in files if f.get("status") != "removed" and is_supported(f["filename"])]
     if len(readable) > MAX_FILES_READ:
-        notes.append(f"Read the first {MAX_FILES_READ} of {len(readable)} changed Python files.")
+        notes.append(f"Read the first {MAX_FILES_READ} of {len(readable)} changed code files.")
     readable = readable[:MAX_FILES_READ]
     with ThreadPoolExecutor(max_workers=8) as pool:
         sources = list(pool.map(lambda f: gh.text(raw_url(head, f["filename"])), readable))
@@ -205,7 +205,7 @@ def check(run: Run, repo: m.Repo, pull_text: str, gh: GitHubReader) -> m.GuardRe
         repo=repo.id,
         pull=pull,
         files_changed=len(files),
-        python_files_read=read,
+        code_files_read=read,
         changed=changed,
         hits=hits,
         notes=notes,

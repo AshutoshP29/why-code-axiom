@@ -83,7 +83,7 @@ def test_a_pr_changing_decided_code_gets_the_decision_with_evidence_and_people()
         "https://raw.githubusercontent.com/someone/requests/abc123/src/requests/models.py"
     ]
     assert [e.id for e in report.changed] == [FN]
-    assert (report.files_changed, report.python_files_read, report.notes) == (2, 1, [])
+    assert (report.files_changed, report.code_files_read, report.notes) == (2, 1, [])
     [hit] = report.hits
     assert hit.level == "code" and [t.id for t in hit.touched] == [FN]
     assert hit.decision.summary == "Replace chardet with charset_normalizer"
@@ -117,7 +117,7 @@ def test_unknown_code_and_unreadable_files_are_reported():
 def test_no_python_changes_means_no_hits():
     reader = FakeReader(files=[FILES[1]])
     report = guard.check(graph([]), repo_model(), "7000", reader)
-    assert (report.python_files_read, report.hits, reader.urls) == (0, [], [])
+    assert (report.code_files_read, report.hits, reader.urls) == (0, [], [])
 
 
 def test_the_route_checks_a_pull_for_the_repo(monkeypatch):

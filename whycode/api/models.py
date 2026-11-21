@@ -380,7 +380,7 @@ class GuardReport(BaseModel):
     repo: str
     pull: GuardPull
     files_changed: int
-    python_files_read: int
+    code_files_read: int  # Python and JavaScript files parsed
     changed: list[Entity]
     hits: list[GuardHit]
     notes: list[str]
