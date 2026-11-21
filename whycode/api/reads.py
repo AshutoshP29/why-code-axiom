@@ -22,12 +22,15 @@ API_KIND = {"file": "file", "cls": "class", "fn": "function", "cfg": "config", "
 CODE_LABELS = ("File", "Class", "Function", "ConfigKey", "Module")
 SEARCH_LIMIT = 10
 
+# The screens open on the first ready repo, so the order decides what a first-time visitor sees:
+# the team's hand-checked repos (no added_at) first, then the best-explained, then the newest.
 Q_REPOS = """// q:repos
 MATCH (r:Repo)
-RETURN r,
-       COUNT { MATCH (c:Commit {repo: r.id}) } AS commits,
-       COUNT { MATCH (d:Decision {repo: r.id}) } AS decisions
-ORDER BY r.last_synced_at DESC
+WITH r,
+     COUNT { MATCH (c:Commit {repo: r.id}) } AS commits,
+     COUNT { MATCH (d:Decision {repo: r.id}) } AS decisions
+RETURN r, commits, decisions
+ORDER BY r.added_at IS NULL DESC, decisions DESC, r.last_synced_at DESC
 """
 Q_REPO = """// q:repo
 MATCH (r:Repo {id: $repo})
