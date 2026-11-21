@@ -7,6 +7,11 @@ an expiry; no GitHub token is kept, since the API only needs to know who the use
     GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET  the GitHub OAuth app
     SESSION_SECRET                          signs session and state cookies (32+ random bytes)
     CRON_SECRET                             set by Vercel Cron; lets the keep-alive in unsigned
+    REVIEWER_USERNAME, REVIEWER_PASSWORD    one password account for evaluators and scanners
+                                            that cannot sign in through GitHub (20+ characters)
+
+Password sign-in is limited per client and overall (failures kept in Postgres when reachable),
+so a long random password cannot be guessed and one guesser cannot lock everyone out quickly.
 """
 
 import base64
@@ -15,14 +20,15 @@ import hmac
 import json
 import os
 import secrets
+import threading
 import time
-from typing import Annotated
+from typing import Annotated, Protocol
 from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 AUTH_ENV = "WHYCODE_AUTH"
 SESSION_COOKIE = "whycode_session"
@@ -32,6 +38,10 @@ STATE_SECONDS = 600
 AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 TOKEN_URL = "https://github.com/login/oauth/access_token"
 USER_URL = "https://api.github.com/user"
+MIN_REVIEWER_PASSWORD = 20
+FAILURE_WINDOW_SECONDS = 15 * 60
+MAX_FAILURES_PER_CLIENT = 5
+MAX_FAILURES_OVERALL = 50
 
 
 class User(BaseModel):
@@ -207,4 +217,112 @@ def callback(
 def logout():
     response = Response(status_code=204)
     response.delete_cookie(SESSION_COOKIE, path="/")
+    return response
+
+
+class PasswordLogin(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class Attempts(Protocol):
+    def failures(self, client: str, seconds: int) -> tuple[int, int]:
+        """(this client's failures, everyone's failures) in the last `seconds`."""
+
+    def record(self, client: str) -> None: ...
+
+
+class MemoryAttempts:
+    """Per-instance fallback when Postgres is not reachable."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._log: list[tuple[str, float]] = []
+
+    def failures(self, client: str, seconds: int) -> tuple[int, int]:
+        since = time.time() - seconds
+        with self._lock:
+            self._log = [(c, at) for c, at in self._log if at > since]
+            return sum(c == client for c, _ in self._log), len(self._log)
+
+    def record(self, client: str) -> None:
+        with self._lock:
+            self._log.append((client, time.time()))
+
+
+ATTEMPTS_DDL = """
+CREATE TABLE IF NOT EXISTS login_failures (
+    id        bigserial   PRIMARY KEY,
+    client    text        NOT NULL,
+    failed_at timestamptz NOT NULL DEFAULT now()
+)
+"""
+
+
+class PgAttempts:
+    """Failures shared by every API instance, in Postgres table login_failures."""
+
+    def __init__(self, conn):
+        self.conn = conn
+        conn.execute(ATTEMPTS_DDL)
+
+    def failures(self, client: str, seconds: int) -> tuple[int, int]:
+        row = self.conn.execute(
+            "SELECT count(*) FILTER (WHERE client = %s), count(*) FROM login_failures "
+            "WHERE failed_at > now() - make_interval(secs => %s)",
+            (client, seconds),
+        ).fetchone()
+        return int(row[0]), int(row[1])
+
+    def record(self, client: str) -> None:
+        self.conn.execute("INSERT INTO login_failures (client) VALUES (%s)", (client,))
+        self.conn.execute("DELETE FROM login_failures WHERE failed_at < now() - interval '1 day'")
+
+
+_memory_attempts = MemoryAttempts()
+
+
+def get_attempts() -> Attempts:
+    """Overridden by the app with the Postgres store when it is reachable."""
+    return _memory_attempts
+
+
+def _client(request: Request) -> str:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    first = forwarded.split(",")[0].strip()
+    return first or (request.client.host if request.client else "unknown")
+
+
+def _same(given: str, expected: str) -> bool:
+    """Constant-time comparison that does not leak the expected length."""
+    a = hashlib.sha256(given.encode()).digest()
+    b = hashlib.sha256(expected.encode()).digest()
+    return hmac.compare_digest(a, b)
+
+
+@router.post("/password", status_code=204)
+def password_login(
+    body: PasswordLogin,
+    request: Request,
+    attempts: Annotated[Attempts, Depends(get_attempts)],
+):
+    username = os.environ.get("REVIEWER_USERNAME", "")
+    password = os.environ.get("REVIEWER_PASSWORD", "")
+    if not enabled() or not username or len(password) < MIN_REVIEWER_PASSWORD:
+        raise HTTPException(404, "Reviewer sign-in is off.")
+    client = _client(request)
+    mine, everyone = attempts.failures(client, FAILURE_WINDOW_SECONDS)
+    if mine >= MAX_FAILURES_PER_CLIENT or everyone >= MAX_FAILURES_OVERALL:
+        raise HTTPException(429, "Too many failed sign-ins. Try again in 15 minutes.")
+    # Both compared every time, so a right username takes as long as a wrong one.
+    ok = _same(body.username, username) & _same(body.password, password)
+    if not ok:
+        attempts.record(client)
+        raise HTTPException(401, "Wrong username or password.")
+    response = Response(status_code=204)
+    user = User(login=username, name="Reviewer account", avatar_url=None)
+    session = sign(
+        {"user": user.model_dump(), "exp": time.time() + SESSION_SECONDS}, _secret("SESSION_SECRET")
+    )
+    _cookie(response, SESSION_COOKIE, session, SESSION_SECONDS)
     return response

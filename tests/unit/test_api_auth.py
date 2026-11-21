@@ -175,3 +175,103 @@ def test_keepalive_only_for_the_cron_secret(auth_on):
     assert bad.status_code == 401
     ok = c.get("/api/keepalive", headers={"Authorization": "Bearer cron-secret"})
     assert ok.status_code == 200 and ok.json() == {"repos": 1}
+
+
+REVIEWER_PASSWORD = "correct-horse-battery-staple-42"
+
+
+@pytest.fixture
+def reviewer(auth_on, monkeypatch):
+    monkeypatch.setenv("REVIEWER_USERNAME", "reviewer")
+    monkeypatch.setenv("REVIEWER_PASSWORD", REVIEWER_PASSWORD)
+    attempts = auth.MemoryAttempts()
+    return client(FakeGraph(), {auth.get_attempts: lambda: attempts}), attempts
+
+
+def login(c, password=REVIEWER_PASSWORD, username="reviewer", ip="1.2.3.4"):
+    return c.post(
+        "/api/auth/password",
+        json={"username": username, "password": password},
+        headers={"X-Forwarded-For": f"{ip}, 10.0.0.1"},
+    )
+
+
+def test_reviewer_signs_in_with_the_same_session(reviewer):
+    c, _ = reviewer
+    res = login(c)
+    assert res.status_code == 204
+    cookie = res.headers["set-cookie"]
+    assert "HttpOnly" in cookie and "Secure" in cookie and "SameSite=lax" in cookie
+    payload = auth.unsign(res.cookies[auth.SESSION_COOKIE], KEY)
+    assert payload["user"] == {"login": "reviewer", "name": "Reviewer account", "avatar_url": None}
+
+
+def test_wrong_details_are_refused_without_saying_which(reviewer):
+    c, attempts = reviewer
+    for res in (login(c, password="nope"), login(c, username="admin")):
+        assert res.status_code == 401
+        assert res.json()["detail"] == "Wrong username or password."
+        assert auth.SESSION_COOKIE not in res.cookies
+    assert attempts.failures("1.2.3.4", 60) == (2, 2)
+
+
+def test_five_failures_lock_that_client_out_even_with_the_right_password(reviewer):
+    c, _ = reviewer
+    for _ in range(auth.MAX_FAILURES_PER_CLIENT):
+        assert login(c, password="guess").status_code == 401
+    locked = login(c)
+    assert locked.status_code == 429
+    assert locked.json()["detail"] == "Too many failed sign-ins. Try again in 15 minutes."
+    assert login(c, ip="5.6.7.8").status_code == 204  # another client still gets in
+
+
+def test_many_failures_overall_lock_everyone_out(reviewer):
+    c, attempts = reviewer
+    for i in range(auth.MAX_FAILURES_OVERALL):
+        attempts.record(f"10.0.{i}.1")
+    assert login(c, ip="9.9.9.9").status_code == 429
+
+
+@pytest.mark.parametrize(
+    ("username", "password"), [("", REVIEWER_PASSWORD), ("reviewer", "too-short-password")]
+)
+def test_reviewer_sign_in_is_off_without_a_long_password(auth_on, monkeypatch, username, password):
+    monkeypatch.setenv("REVIEWER_USERNAME", username)
+    monkeypatch.setenv("REVIEWER_PASSWORD", password)
+    res = login(client(FakeGraph(), {auth.get_attempts: auth.MemoryAttempts}), password=password)
+    assert res.status_code == 404
+
+
+def test_reviewer_sign_in_is_off_when_sign_in_is_off(monkeypatch):
+    monkeypatch.setenv("REVIEWER_USERNAME", "reviewer")
+    monkeypatch.setenv("REVIEWER_PASSWORD", REVIEWER_PASSWORD)
+    assert login(client(FakeGraph())).status_code == 404
+
+
+class FakeCursor:
+    def __init__(self, row=None):
+        self.row = row
+
+    def fetchone(self):
+        return self.row
+
+
+class FakeConn:
+    def __init__(self):
+        self.sql = []
+
+    def execute(self, sql, params=()):
+        self.sql.append((sql, params))
+        return FakeCursor((2, 7))
+
+
+def test_postgres_attempts_sql():
+    conn = FakeConn()
+    store = auth.PgAttempts(conn)
+    assert store.failures("1.2.3.4", 900) == (2, 7)
+    store.record("1.2.3.4")
+    statements = [s for s, _ in conn.sql]
+    assert "CREATE TABLE IF NOT EXISTS login_failures" in statements[0]
+    assert conn.sql[1][1] == ("1.2.3.4", 900)
+    assert conn.sql[2] == ("INSERT INTO login_failures (client) VALUES (%s)", ("1.2.3.4",))
+    assert "DELETE FROM login_failures" in statements[3]
