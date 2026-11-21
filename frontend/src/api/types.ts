@@ -391,7 +391,7 @@ export interface GuardReport {
   repo: string
   pull: GuardPull
   files_changed: number
-  code_files_read: number // Python and JavaScript files parsed
+  code_files_read: number // files in a language the code map reads
   changed: Entity[]
   hits: GuardHit[] // code-level first, newest decision first
   notes: string[]

@@ -381,7 +381,7 @@ class GuardReport(BaseModel):
     repo: str
     pull: GuardPull
     files_changed: int
-    code_files_read: int  # Python and JavaScript files parsed
+    code_files_read: int  # files in a language the code map reads (whycode/code/languages.py)
     changed: list[Entity]
     hits: list[GuardHit]
     notes: list[str]

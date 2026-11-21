@@ -173,8 +173,8 @@ def test_jsx_and_module_files_are_read():
         assert is_supported(path)
 
 
-@pytest.mark.parametrize("path", ["dist/app.min.js", "src/a.ts", "src/a.tsx", "a.json"])
-def test_minified_bundles_and_other_languages_are_not_read(path):
+@pytest.mark.parametrize("path", ["dist/app.min.js", "src/a.clj", "src/a.erl", "a.json"])
+def test_minified_bundles_and_unread_languages_are_not_read(path):
     assert not is_supported(path)
     with pytest.raises(UnsupportedFileError):
         parse_file(REPO, path, "const A = 1;")
@@ -216,7 +216,7 @@ def test_code_map_reads_javascript_and_leaves_out_minified_bundles(tmp_path):
     _write(root, "tool.py", "def f():\n    return 1\n")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "mixed")
-    assert codemap.code_files(root) == ["lib/router.js", "tool.py"]
+    assert codemap.code_files(root) == ["lib/router.js", "src/types.ts", "tool.py"]
     b = codemap.build_code_map(REPO, root)
     assert "o/r#fn:lib/router.js::Router.constructor" in b.nodes["Function"]
     assert "o/r#fn:tool.py::f" in b.nodes["Function"]
