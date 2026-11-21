@@ -8,6 +8,9 @@ and a query here, nothing else.
 Each match of a query captures `@name` and exactly one of:
 - @class, @function  a definition; the captured node gives its lines, @name its name. Nesting by
                      line range gives qualified names ("Router.handle", "outer.inner").
+- @signature         a function declared without its body (a C prototype, a method declared in a
+                     C++ class, a TypeScript overload). It is a function, but when the file also
+                     has the definition, the definition is kept: changes land in the body.
 - @scope             a container that only names what is inside it, with no entity of its own:
                      a Rust `impl Router` block makes its functions "Router.new", and their parent
                      the Router struct when the file has it.
@@ -17,13 +20,17 @@ Each match of a query captures `@name` and exactly one of:
 - @default           a parameter with a default (@value). Kept only when the default references a
                      constant, and only for the definition the parameter list belongs to.
 A @function may also capture @owner, the type a method belongs to when it is declared outside it
-(Go's `func (r *Router) Handle()` is "Router.Handle").
+(Go's `func (r *Router) Handle()` is "Router.Handle"). A name written with `::` names its owner
+too: C++'s `void app::Router::serve()` is "Router.serve".
 """
 
+import re
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 
+import tree_sitter_c as tsc
 import tree_sitter_c_sharp as tscsharp
+import tree_sitter_cpp as tscpp
 import tree_sitter_go as tsgo
 import tree_sitter_java as tsjava
 import tree_sitter_javascript as tsjs
@@ -32,6 +39,11 @@ import tree_sitter_ruby as tsruby
 import tree_sitter_rust as tsrust
 import tree_sitter_typescript as tsts
 from tree_sitter import Language, Query
+
+# Two characters or more, so single-letter type variables ("T") are not config.
+UPPER_CASE = re.compile(r"^_*[A-Z][A-Z0-9_]+$")
+# C++ also names constants the Google way: kMaxRetries.
+CPP_CONSTANT = re.compile(r"^(_*[A-Z][A-Z0-9_]+|k[A-Z][A-Za-z0-9_]*)$")
 
 
 @dataclass(frozen=True)
@@ -43,19 +55,25 @@ class QueryLanguage:
     # Value node types that make a declaration a function or class rather than config:
     # `const make = () => 1` is a function, `const LIMIT = 5` is config.
     code_values: frozenset[str] = frozenset()
-    # True where the query matches any variable (JavaScript `const`, Java `static final`), so
-    # only UPPER_CASE names are config; False where the keyword itself declares a constant
-    # (Go, C#, Rust and PHP `const`, Ruby constants).
-    config_upper_only: bool = True
-    # How a parameter default references a constant: node types that name one (checked for
-    # UPPER_CASE when ref_upper_only), node types that always are one (Ruby `Constant`), and
-    # member accesses with the field naming the member (None: its last named child).
+    # Which declared names are config. A pattern where the query matches any variable
+    # (JavaScript `const`, Java `static final`); None where the keyword itself declares a
+    # constant (Go, C#, Rust and PHP `const`, Ruby constants).
+    config_names: re.Pattern | None = UPPER_CASE
+    # How a parameter default references a constant: node types that name one (matched against
+    # ref_names, None: any name), node types that always are one (Ruby `Constant`), and member
+    # accesses with the field naming the member (None: its last named child).
     ref_types: frozenset[str] = frozenset({"identifier"})
-    ref_upper_only: bool = True
+    ref_names: re.Pattern | None = UPPER_CASE
     constant_types: frozenset[str] = frozenset()
     member_name_field: dict[str, str | None] = field(default_factory=dict)
+    # Node types between a parameter list and its function definition (C's declarators:
+    # `char *f(int x = A)` puts a pointer declarator in between).
+    declarator_types: frozenset[str] = frozenset()
     # Generated files to leave out (minified bundles, protobuf output): thousands of names.
     skipped_suffixes: tuple[str, ...] = ()
+    # Another language to read the file with when this one finds syntax errors and it does not
+    # (a `.h` header is C++ or C).
+    fallback: "QueryLanguage | None" = None
 
 
 def _make(name: str, language_ptr, suffixes: set[str], query: str, **kw) -> QueryLanguage:
@@ -110,10 +128,10 @@ TYPESCRIPT_QUERY = f"""
 
 (function_declaration name: (identifier) @name) @function
 (generator_function_declaration name: (identifier) @name) @function
-(function_signature name: (identifier) @name) @function
+(function_signature name: (identifier) @name) @signature
 (method_definition name: (_) @name) @function
-(method_signature name: (_) @name) @function
-(abstract_method_signature name: (_) @name) @function
+(method_signature name: (_) @name) @signature
+(abstract_method_signature name: (_) @name) @signature
 (variable_declarator name: (identifier) @name value: {_JS_FUNCTION}) @function
 (assignment_expression
   left: [(identifier) @name (member_expression property: (property_identifier) @name)]
@@ -258,6 +276,92 @@ PHP_QUERY = """
 (simple_parameter name: (variable_name (name) @name) default_value: (_) @value) @default
 """
 
+# C and C++ ------------------------------------------------------------------------------------
+
+# A function's name sits inside its declarator, behind any pointer or reference in the return type.
+_C_FN = (
+    "[(function_declarator declarator: {n})"
+    " (pointer_declarator declarator: (function_declarator declarator: {n}))"
+    " (pointer_declarator declarator:"
+    " (pointer_declarator declarator: (function_declarator declarator: {n})))]"
+)
+_CPP_FN = (
+    "[(function_declarator declarator: {n})"
+    " (pointer_declarator declarator: (function_declarator declarator: {n}))"
+    " (pointer_declarator declarator:"
+    " (pointer_declarator declarator: (function_declarator declarator: {n})))"
+    " (reference_declarator (function_declarator declarator: {n}))]"
+)
+_C_NAME = "(identifier) @name"
+_CPP_NAME = (
+    "[(identifier) (field_identifier) (destructor_name) (operator_name) (qualified_identifier)]"
+    " @name"
+)
+# Where file-level declarations sit: the file itself, or an include guard or #if block around them.
+_C_TOP = ("translation_unit", "preproc_ifdef", "preproc_if", "preproc_else", "preproc_elif")
+_C_CONST = "(init_declarator declarator: (identifier) @name value: (_) @value)"
+_IS_CONST = '(#eq? @q "const")'
+
+
+def _at_top(pattern: str, parents) -> str:
+    return "\n".join(f"({p} {pattern})" for p in parents)
+
+
+_RECORDS = """
+(struct_specifier name: {n} body: (_)) @class
+(union_specifier name: {n} body: (_)) @class
+(enum_specifier name: {n} body: (_)) @class
+(type_definition
+  type: [(struct_specifier !name body: (_)) (union_specifier !name body: (_))
+         (enum_specifier !name body: (_))]
+  declarator: (type_identifier) @name) @class
+"""
+_C_RECORDS = _RECORDS.format(n="(type_identifier) @name")
+# C++ may define a nested type outside its class: `struct DBImpl::Writer {...}` is DBImpl.Writer.
+_CPP_TYPE_NAME = "[(type_identifier) (qualified_identifier)] @name"
+_CPP_RECORDS = _RECORDS.format(n=_CPP_TYPE_NAME)
+
+# Structs, unions and enums with a body (also unnamed ones a typedef names); functions;
+# prototypes at file level; #define constants and file-level const variables.
+C_QUERY = f"""
+{_C_RECORDS}
+(function_definition declarator: {_C_FN.format(n=_C_NAME)}) @function
+{_at_top(f"(declaration declarator: {_C_FN.format(n=_C_NAME)}) @signature", _C_TOP)}
+
+(preproc_def name: (identifier) @name value: (_) @value) @config
+{_at_top(f"((declaration (type_qualifier) @q declarator: {_C_CONST}) @config {_IS_CONST})", _C_TOP)}
+"""
+
+# C's patterns plus classes and templates. Methods defined outside their class are named after it
+# (`void Router::serve()` is "Router.serve", and replaces the declaration inside the class).
+# Namespaces are left out of names, as Java packages and C# namespaces are.
+_CPP_TOP = (*_C_TOP, "declaration_list")
+CPP_QUERY = f"""
+{_CPP_RECORDS}
+(class_specifier name: {_CPP_TYPE_NAME} body: (_)) @class
+
+(function_definition declarator: {_CPP_FN.format(n=_CPP_NAME)}) @function
+{_at_top(f"(declaration declarator: {_CPP_FN.format(n=_CPP_NAME)}) @signature", _CPP_TOP)}
+(field_declaration_list (declaration declarator: {_CPP_FN.format(n=_CPP_NAME)}) @signature)
+(field_declaration_list (field_declaration declarator: {_CPP_FN.format(n=_CPP_NAME)}) @signature)
+
+(preproc_def name: (identifier) @name value: (_) @value) @config
+{
+    _at_top(
+        f"((declaration (type_qualifier) @q declarator: {_C_CONST}) @config"
+        ' (#any-of? @q "const" "constexpr"))',
+        _CPP_TOP,
+    )
+}
+((field_declaration (storage_class_specifier) @s (type_qualifier) @q
+   declarator: (field_identifier) @name default_value: (_) @value) @config
+ (#eq? @s "static") (#any-of? @q "const" "constexpr"))
+
+(optional_parameter_declaration declarator: (identifier) @name default_value: (_) @value) @default
+"""
+
+_C_DECLARATORS = frozenset({"function_declarator", "pointer_declarator", "reference_declarator"})
+
 # ----------------------------------------------------------------------------------------------
 
 JAVASCRIPT = _make(
@@ -278,7 +382,7 @@ GO = _make(
     tsgo.language(),
     {".go"},
     GO_QUERY,
-    config_upper_only=False,
+    config_names=None,
     skipped_suffixes=(".pb.go",),
 )
 CSHARP = _make(
@@ -286,19 +390,19 @@ CSHARP = _make(
     tscsharp.language(),
     {".cs"},
     CSHARP_QUERY,
-    config_upper_only=False,
-    ref_upper_only=False,
+    config_names=None,
+    ref_names=None,
     member_name_field={"member_access_expression": "name"},
     skipped_suffixes=(".g.cs", ".designer.cs"),
 )
-RUST = _make("rust", tsrust.language(), {".rs"}, RUST_QUERY, config_upper_only=False)
+RUST = _make("rust", tsrust.language(), {".rs"}, RUST_QUERY, config_names=None)
 RUBY = _make(
     "ruby",
     tsruby.language(),
     {".rb"},
     RUBY_QUERY,
     code_values=frozenset({"lambda"}),
-    config_upper_only=False,
+    config_names=None,
     ref_types=frozenset(),
     constant_types=frozenset({"constant"}),
     member_name_field={"scope_resolution": "name"},
@@ -308,13 +412,26 @@ PHP = _make(
     tsphp.language_php(),
     {".php"},
     PHP_QUERY,
-    config_upper_only=False,
+    config_names=None,
     ref_types=frozenset({"name"}),
-    ref_upper_only=False,
+    ref_names=None,
     member_name_field={"class_constant_access_expression": None},
 )
+C = _make("c", tsc.language(), {".c"}, C_QUERY, declarator_types=_C_DECLARATORS)
+_CPP = {
+    "code_values": frozenset({"lambda_expression"}),
+    "config_names": CPP_CONSTANT,
+    "ref_names": CPP_CONSTANT,
+    "member_name_field": {"qualified_identifier": "name", "field_expression": "field"},
+    "declarator_types": _C_DECLARATORS,
+}
+CPP = _make(
+    "cpp", tscpp.language(), {".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx"}, CPP_QUERY, **_CPP
+)
+# A .h header is read as C++ (which also reads most C), and as C when C++ finds syntax errors.
+HEADER = _make("c-or-cpp-header", tscpp.language(), {".h"}, CPP_QUERY, fallback=C, **_CPP)
 
-QUERY_LANGUAGES = (JAVASCRIPT, TYPESCRIPT, TSX, JAVA, GO, CSHARP, RUST, RUBY, PHP)
+QUERY_LANGUAGES = (JAVASCRIPT, TYPESCRIPT, TSX, JAVA, GO, CSHARP, RUST, RUBY, PHP, C, CPP, HEADER)
 
 
 def language_for(path: str) -> QueryLanguage | None:

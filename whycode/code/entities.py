@@ -1,7 +1,7 @@
 """Code entities in one source file, parsed with tree-sitter: File, Class, Function, ConfigKey.
 
-Python is read by the walker below. JavaScript, TypeScript, Java, Go, C#, Rust, Ruby and PHP
-are read by running each language's query from whycode/code/languages.py (_QueryWalker), with
+Python is read by the walker below. JavaScript, TypeScript, Java, Go, C#, Rust, Ruby, PHP, C and
+C++ are read by running each language's query from whycode/code/languages.py (_QueryWalker), with
 the same rules wherever the language has the construct.
 
 Only parsing lives here. The caller supplies the file's text (from disk or a git blob) and gets
@@ -21,15 +21,19 @@ Rules:
 
 The other languages, as their queries in languages.py find them:
 - Classes are each language's type declarations: classes, interfaces, enums, records, structs,
-  traits, Ruby modules. Namespaces and Rust `impl`/`mod` blocks only name what is inside them.
+  unions, traits, Ruby modules, C typedefs of unnamed structs. Rust `impl`/`mod` blocks and
+  TypeScript namespaces only name what is inside them; C++, Java and C# namespaces are left out.
 - Functions are functions, methods (constructors, getters and setters included), C# properties,
   and in JavaScript/TypeScript functions assigned to a name: `const f = () => {}`,
   `res.send = function send() {}` ("send"). Callbacks passed as arguments are not entities.
-  A Go method is named after its receiver's type ("Router.Handle").
+  A Go method is named after its receiver's type ("Router.Handle"), a C++ method defined
+  outside its class after the class ("Router::serve" is "Router.serve"). A prototype or a
+  declaration without a body counts only when the file has no definition with its name.
 - ConfigKeys are constants, inside a class as "Class.NAME": UPPER_CASE top-level `const`/`let`/
   `var` in JavaScript/TypeScript (class fields are not, as for Python), UPPER_CASE `static
   final` fields in Java, and any `const` in Go, C#, Rust and PHP, C# `readonly` fields with a
-  value, Rust `static`s, Ruby constants. Also parameter defaults that reference a constant
+  value, Rust `static`s, Ruby constants, C/C++ `#define`s and UPPER_CASE (or C++ kName)
+  `const`/`constexpr` variables. Also parameter defaults that reference a constant
   (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`).
 """
 
@@ -41,7 +45,7 @@ from pathlib import PurePosixPath
 import tree_sitter_python as tspython
 from tree_sitter import Language, Node, Parser, QueryCursor
 
-from whycode.code.languages import QUERY_LANGUAGES, QueryLanguage, language_for
+from whycode.code.languages import QUERY_LANGUAGES, UPPER_CASE, QueryLanguage, language_for
 from whycode.ids import make_id, normalize_repo
 
 _PYTHON_SUFFIX = ".py"
@@ -51,7 +55,7 @@ SUPPORTED_SUFFIXES = frozenset({_PYTHON_SUFFIX}).union(*(lang.suffixes for lang 
 
 _LANGUAGE = Language(tspython.language())
 # Two characters or more, so single-letter TypeVars ("T = TypeVar('T')") are not config.
-_UPPER_RE = re.compile(r"^_*[A-Z][A-Z0-9_]+$")
+_UPPER_RE = UPPER_CASE
 _STATEMENT_WRAPPERS = frozenset({"assignment", "expression_statement"})
 _MAX_VALUE_CHARS = 200
 
@@ -126,6 +130,10 @@ def parse_file(repo: str, path: str, source: bytes | str) -> ParsedFile:
         tree = Parser(_LANGUAGE).parse(data)
         return _Walker(normalize_repo(repo), path).run(tree.root_node, data)
     tree = Parser(lang.language).parse(data)
+    if tree.root_node.has_error and lang.fallback is not None:
+        other = Parser(lang.fallback.language).parse(data)
+        if not other.root_node.has_error:  # a .h that is C, not C++
+            lang, tree = lang.fallback, other
     return _QueryWalker(normalize_repo(repo), path, lang).run(tree.root_node, data)
 
 
@@ -307,7 +315,8 @@ class _Definition:
     kind: EntityKind | None
     name: str
     node: Node
-    owner: str | None = None  # the type a method declared outside it belongs to (Go)
+    owner: str | None = None  # the type a method declared outside it belongs to (Go, C++)
+    signature: bool = False  # declared without a body; a definition with its id wins
     qualified: str = ""
     id: str = ""
     parent: "_Definition | None" = None
@@ -321,7 +330,23 @@ def _name_text(node: Node) -> str:
     return " ".join(text.split())
 
 
-_KIND_BY_CAPTURE = {"class": EntityKind.CLASS, "function": EntityKind.FUNCTION, "scope": None}
+_KIND_BY_CAPTURE = {
+    "class": EntityKind.CLASS,
+    "function": EntityKind.FUNCTION,
+    "signature": EntityKind.FUNCTION,
+    "scope": None,
+}
+
+
+def _split_owner(text: str, owner: str | None) -> tuple[str, str | None]:
+    """A name written with `::` names its owner: "app::Router::serve" is serve, owned by Router.
+    Template arguments are dropped ("Box<T>::get" is owned by Box)."""
+    if owner is not None or "::" not in text:
+        return text, owner
+    parts = [p for p in text.split("::") if p]
+    if not parts:
+        return text, owner
+    return parts[-1], (parts[-2].split("<")[0].strip() or None) if len(parts) > 1 else None
 
 
 class _QueryWalker:
@@ -349,19 +374,24 @@ class _QueryWalker:
             elif capture := next((c for c in _KIND_BY_CAPTURE if c in caps), None):
                 node = caps[capture][0]
                 owner = _name_text(caps["owner"][0]) if "owner" in caps else None
-                if text := _name_text(name):
+                text, owner = _split_owner(_name_text(name), owner)
+                if text:
                     spans.setdefault(
                         (node.start_byte, node.end_byte),
-                        _Definition(_KIND_BY_CAPTURE[capture], text, node, owner),
+                        _Definition(
+                            _KIND_BY_CAPTURE[capture], text, node, owner, capture == "signature"
+                        ),
                     )
         defs = self._nest(
             sorted(spans.values(), key=lambda d: (d.node.start_byte, -d.node.end_byte))
         )
         classes = {d.qualified: d for d in defs if d.kind is EntityKind.CLASS}
 
+        # A function the file defines is that definition, not its prototype or declaration.
+        defined = {d.id for d in defs if d.kind is not None and not d.signature}
         found = []
         for d in defs:
-            if d.kind is None:
+            if d.kind is None or (d.signature and d.id in defined):
                 continue
             if d.owner is not None:
                 parent_id = classes[d.owner].id if d.owner in classes else self.file_id
@@ -475,26 +505,28 @@ class _QueryWalker:
                 around = d
         return around
 
-    @staticmethod
-    def _owner(param: Node, defs: list[_Definition]) -> _Definition | None:
+    def _owner(self, param: Node, defs: list[_Definition]) -> _Definition | None:
         """The function whose own parameter list holds `param`: the definition itself
-        (`function f(x = A)`) or the function that is its value (`const f = (x = A) => x`).
-        A default in a callback inside f is not f's."""
+        (`function f(x = A)`) or the function that is its value (`const f = (x = A) => x`), past
+        any C declarators in between (`char *f(int x = A)`). A default in a callback inside f is
+        not f's."""
         params = param.parent
         fn = params.parent if params is not None else None
         if fn is None:
             return None
+        while fn.parent is not None and fn.parent.type in self.lang.declarator_types:
+            fn = fn.parent
         holders = [fn] if fn.parent is None else [fn, fn.parent]
         return next((d for d in defs if d.kind is EntityKind.FUNCTION and d.node in holders), None)
 
     def _is_config_name(self, name: str) -> bool:
-        if self.lang.config_upper_only:
-            return bool(_UPPER_RE.match(name))
+        if self.lang.config_names is not None:
+            return bool(self.lang.config_names.match(name))
         return any(c.isalpha() for c in name)  # not Go's blank `_`
 
     def _is_constant_name(self, text: str) -> bool:
-        if self.lang.ref_upper_only:
-            return bool(_UPPER_RE.match(text))
+        if self.lang.ref_names is not None:
+            return bool(self.lang.ref_names.match(text))
         return bool(text) and (text[0].isalpha() or text[0] == "_")
 
     def _references_constant(self, value: Node) -> bool:

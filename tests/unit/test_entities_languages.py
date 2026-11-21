@@ -110,6 +110,45 @@ enum Mode { case A; }
 function helper($x = 1) {}
 """
 
+C = """\
+#define MAX_RETRIES 3
+#define SQUARE(x) ((x) * (x))
+static const int DEFAULT_TIMEOUT = 30;
+const char *default_name = "x";
+struct router { int count; };
+typedef struct { int x; } point_t;
+enum mode { MODE_A, MODE_B };
+int helper(int x);
+static char *router_name(struct router *r) { return 0; }
+int router_handle(struct router *r, int req) { return 0; }
+"""
+
+CPP = """\
+#define BUFFER_SIZE 1024
+namespace app {
+constexpr int kMaxRetries = 3;
+const int DEFAULT_TIMEOUT = 30;
+class Router : public Base {
+ public:
+  static constexpr int LIMIT = 5;
+  Router(int x);
+  ~Router();
+  void serve();
+  int size() const { return 0; }
+  Router& self() { return *this; }
+ private:
+  struct Inner { void run() {} };
+};
+template <typename T> class Box { T get() { return T(); } };
+void Router::serve() {}
+Router::Router(int x) {}
+char *app::Router::name() { return nullptr; }
+int helper(int x = DEFAULT_TIMEOUT) { auto f = [](int y) { return y; }; return 0; }
+enum class Mode { A, B };
+}
+extern "C" { int c_api(void); }
+"""
+
 # path, source, {qualified name: parent's qualified name ("" for the file)} for classes and
 # functions, and {qualified name: value} for config keys.
 CASES = {
@@ -239,6 +278,46 @@ CASES = {
             "Router.__construct.retries": "MAX_RETRIES",
         },
     ),
+    "c": (
+        "src/router.c",
+        C,
+        {
+            "router": "",
+            "point_t": "",  # an unnamed struct a typedef names
+            "mode": "",
+            "helper": "",  # a prototype, with no definition in this file
+            "router_name": "",  # behind a pointer return type
+            "router_handle": "",
+        },
+        {"MAX_RETRIES": "3", "DEFAULT_TIMEOUT": "30"},  # not the function-like macro SQUARE
+    ),
+    "cpp": (
+        "src/router.cpp",
+        CPP,
+        {
+            "Router": "",  # namespaces are left out of names
+            "Router.~Router": "Router",
+            "Router.size": "Router",
+            "Router.self": "Router",
+            "Router.Inner": "Router",
+            "Router.Inner.run": "Router.Inner",
+            "Box": "",
+            "Box.get": "Box",
+            "Router.serve": "Router",  # defined outside the class, named after it
+            "Router.Router": "Router",
+            "Router.name": "Router",  # app::Router::name
+            "helper": "",
+            "Mode": "",
+            "c_api": "",
+        },
+        {
+            "BUFFER_SIZE": "1024",
+            "kMaxRetries": "3",
+            "DEFAULT_TIMEOUT": "30",
+            "Router.LIMIT": "5",
+            "helper.x": "DEFAULT_TIMEOUT",
+        },
+    ),
 }
 
 
@@ -310,6 +389,39 @@ def test_what_is_not_config():
     assert "LIMIT" not in names(TYPESCRIPT, "a.ts")
 
 
+def _lines(parsed, qualified):
+    [e] = [e for e in parsed.entities if e.qualified_name == qualified]
+    return (e.start_line, e.end_line)
+
+
+def test_a_definition_replaces_its_declaration():
+    cpp = parse_file(REPO, "src/router.cpp", CPP)
+    assert _lines(cpp, "Router.serve") == (17, 17)  # the body, not `void serve();` on line 10
+    assert _lines(cpp, "Router.Router") == (18, 18)
+    ts = "function f(a: string): void;\nfunction f(a: any) {\n  return a;\n}\n"
+    assert _lines(parse_file(REPO, "a.ts", ts), "f") == (2, 4)  # an overload, then the body
+
+
+def test_a_nested_type_defined_outside_its_class():
+    src = "struct DBImpl::Writer {\n  Writer() {}\n};\n"
+    parsed = parse_file(REPO, "db/db_impl.cc", src)
+    names = _qualified_by_id(parsed)
+    assert {e.qualified_name: names[e.parent_id] for e in parsed.entities[1:]} == {
+        "DBImpl.Writer": "",
+        "DBImpl.Writer.Writer": "DBImpl.Writer",
+    }
+
+
+def test_a_header_is_read_as_cpp_or_else_as_c():
+    cpp = parse_file(REPO, "include/a.h", "class A { void f(); };\n")
+    assert [e.qualified_name for e in cpp.entities[1:]] == ["A", "A.f"]
+    # `new` and `class` are names in C but keywords in C++: C++ finds errors, C does not.
+    c_src = "struct node { struct node *new; int class; };\nint list_add(struct node *new);\n"
+    c = parse_file(REPO, "include/list.h", c_src)
+    assert not c.has_syntax_errors
+    assert [e.qualified_name for e in c.entities[1:]] == ["node", "list_add"]
+
+
 def test_tsx_files_use_the_tsx_grammar():
     src = "export const App = ({ n = LIMIT }) => <div onClick={() => go()}>{n}</div>;\n"
     parsed = parse_file(REPO, "src/App.tsx", src)
@@ -329,6 +441,11 @@ def test_tsx_files_use_the_tsx_grammar():
         ("a.rs", "rust"),
         ("a.rb", "ruby"),
         ("a.php", "php"),
+        ("a.c", "c"),
+        ("a.cc", "cpp"),
+        ("a.cpp", "cpp"),
+        ("a.hpp", "cpp"),
+        ("a.h", "c-or-cpp-header"),
         ("lib\\a.js", "javascript"),
     ],
 )
