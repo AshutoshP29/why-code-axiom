@@ -7,6 +7,8 @@ docker-compose container). The driver is made on the first request, so importing
 needs no configuration.
 """
 
+import dataclasses
+import json
 import os
 from contextlib import asynccontextmanager
 from datetime import date
@@ -19,6 +21,7 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
+from starlette.concurrency import run_in_threadpool
 
 from whycode.api import answers, auth, guard, lineage, reads, repos
 from whycode.api import models as m
@@ -128,6 +131,7 @@ def gap_queue(run: Run, gaps: GapStore | None, repo: str, entity_id: str | None 
 
 RunDep = Annotated[Run, Depends(get_run)]
 RepoDep = Annotated[str, Depends(repo_param)]
+
 router = APIRouter(prefix="/api", dependencies=[Depends(auth.require_user)])
 
 
@@ -217,6 +221,64 @@ MATCH (r:Repo) RETURN count(r) AS n
 def keepalive(run: RunDep):
     """Daily Vercel Cron call: one read keeps the free Aura instance from pausing."""
     return {"repos": run(Q_KEEPALIVE, {})[0]["n"]}
+
+
+WEBHOOK_SECRET_ENV = "WHYCODE_WEBHOOK_SECRET"
+
+
+def get_writer():
+    """Writes a GraphBatch with MERGE (whycode.graph.writer); tests swap in a fake."""
+    from whycode.graph.writer import write_batch
+
+    driver, database = _graph()
+    return lambda batch: write_batch(driver, database, batch)
+
+
+@ops.post("/hooks/github")
+async def github_hook(
+    request: Request,
+    run: RunDep,
+    client: Annotated[httpx.Client, Depends(repos.http_client)],
+    write: Annotated[object, Depends(get_writer)],
+):
+    """GitHub webhook for repos added from the screens (live sync, whycode.ingest.live).
+
+    Signed with WHYCODE_WEBHOOK_SECRET, so it needs no session. A push writes its commits in
+    seconds; a merged pull request restarts the ingestion run, which reads its decisions."""
+    from whycode.ingest import live
+
+    body = await request.body()
+    secret = os.environ.get(WEBHOOK_SECRET_ENV, "")
+    if not secret:
+        raise HTTPException(503, "Live sync is not set up on this server.")
+    if not live.signature_ok(secret, body, request.headers.get("x-hub-signature-256")):
+        raise HTTPException(401, "Bad signature.")
+    event = request.headers.get("x-github-event", "")
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        raise HTTPException(400, "The body is not JSON.") from None
+    if event == "ping":
+        return {"event": "ping", "ok": True}
+    if event == "push":
+        with client:
+            reader = live.CommitReader(client, guard._token())
+            report = await run_in_threadpool(live.sync_push, run, write, reader, payload)
+        return {"event": "push", **dataclasses.asdict(report)}
+    pr = payload.get("pull_request") or {}
+    if event == "pull_request" and payload.get("action") == "closed" and pr.get("merged"):
+        found = reads.repo(run, normalize_repo(payload["repository"]["full_name"]))
+        if found is None:
+            return {"event": event, "skipped": "unknown repository"}
+        with client:
+            try:
+                rerun = await run_in_threadpool(
+                    repos.rerun, run, repos.Dispatcher.from_env(client), found
+                )
+            except HTTPException as exc:  # busy, not set up, or not added from the screens
+                return {"event": event, "skipped": exc.detail}
+        return {"event": event, "rerun": rerun.status}
+    return {"event": event, "skipped": "not handled"}
 
 
 GitHubClientDep = Annotated[httpx.Client, Depends(repos.http_client)]
