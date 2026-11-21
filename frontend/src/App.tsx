@@ -11,6 +11,7 @@ import { HealthPage } from './pages/HealthPage'
 import { HomePage } from './pages/HomePage'
 import { LineagePage } from './pages/LineagePage'
 import { NotFoundPage } from './pages/NotFoundPage'
+import { RiskPage } from './pages/RiskPage'
 import { WhyPage } from './pages/WhyPage'
 import { RepoProvider } from './state/RepoProvider'
 
@@ -47,6 +48,7 @@ export function AppRoutes() {
         <Route path="why" element={<WhyPage />} />
         <Route path="lineage" element={<LineagePage />} />
         <Route path="health" element={<HealthPage />} />
+        <Route path="risk" element={<RiskPage />} />
         <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="explore" element={<ExplorePage />} />
         <Route path="guard" element={<GuardPage />} />
