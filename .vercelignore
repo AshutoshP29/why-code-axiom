@@ -1,0 +1,12 @@
+# The API deployment ships only the Python package, its dependency files and the measured
+# evaluation it serves. Everything else stays out, secrets above all (.env, Neo4j-*.txt).
+/*
+!/whycode
+!/pyproject.toml
+!/uv.lock
+!/vercel.json
+!/README.md
+!/docs
+/docs/*
+!/docs/evaluation.json
+**/__pycache__
