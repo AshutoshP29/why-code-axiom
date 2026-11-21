@@ -260,6 +260,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
         last_synced_at: null,
         commits_count: estimate(repoId).commits,
         decisions_count: 0,
+        added: true,
       }
       repos.push(repo)
       runs.set(repoId, now())
@@ -387,7 +388,7 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
     },
 
     // Sample data has no accounts: sign-in is off.
-    getMe: async () => ({ enabled: false, user: null }),
+    getMe: async () => ({ enabled: false, user: null, can_add_repos: true }),
     logout: async () => {},
     reviewerLogin: async () => {
       throw new ApiError(404, 'Reviewer sign-in is off.')

@@ -6,7 +6,7 @@ import { Dialog } from '../components/Dialog'
 import { EvalTable } from '../components/EvalTable'
 import { Badge, Button, Card, ErrorNotice, Loading, ProgressBar } from '../components/ui'
 import { entityLabel } from '../lib/entity'
-import { INGEST_ACTIONS } from '../lib/features'
+import { useIngestActions } from '../lib/features'
 import { formatCount, formatDateTime, plural } from '../lib/format'
 import { useTitle } from '../lib/hooks'
 import { whyPath } from '../lib/routes'
@@ -40,6 +40,7 @@ export function HealthPage() {
   const { data, error, refetch } = useHealth(repo?.id ?? null)
   const reingest = useReingest()
   const [confirming, setConfirming] = useState(false)
+  const canRerun = useIngestActions() && repo?.added === true
   useTitle('Graph health')
 
   if (!repo) return null
@@ -60,7 +61,7 @@ export function HealthPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={() => downloadReport(repo.id, data)}>Export report</Button>
-          {INGEST_ACTIONS && (
+          {canRerun && (
             <Button variant="primary" onClick={() => setConfirming(true)}>
               Re-run ingestion
             </Button>

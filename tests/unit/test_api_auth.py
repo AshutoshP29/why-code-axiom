@@ -52,7 +52,7 @@ def test_after_sign_in_only_paths_on_this_site(given, safe):
 def test_with_sign_in_off_routes_stay_open():
     c = client(FakeGraph())
     assert c.get("/api/repos").status_code == 200
-    assert c.get("/api/auth/me").json() == {"enabled": False, "user": None}
+    assert c.get("/api/auth/me").json() == {"enabled": False, "user": None, "can_add_repos": True}
 
 
 def test_data_routes_need_a_session(auth_on):
@@ -68,8 +68,10 @@ def test_data_routes_need_a_session(auth_on):
 
 def test_me_returns_the_signed_in_user(auth_on):
     c = client(FakeGraph())
-    assert c.get("/api/auth/me").json() == {"enabled": True, "user": None}
-    assert c.get("/api/auth/me", cookies=session()).json() == {"enabled": True, "user": USER}
+    signed_out = {"enabled": True, "user": None, "can_add_repos": False}
+    assert c.get("/api/auth/me").json() == signed_out
+    signed_in = {"enabled": True, "user": USER, "can_add_repos": True}
+    assert c.get("/api/auth/me", cookies=session()).json() == signed_in
 
 
 def test_login_sends_to_github_with_a_state_cookie(auth_on):
@@ -275,3 +277,34 @@ def test_postgres_attempts_sql():
     assert conn.sql[1][1] == ("1.2.3.4", 900)
     assert conn.sql[2] == ("INSERT INTO login_failures (client) VALUES (%s)", ("1.2.3.4",))
     assert "DELETE FROM login_failures" in statements[3]
+
+
+def test_adders_limit_who_may_add_and_rerun_repositories(auth_on, monkeypatch):
+    monkeypatch.setenv("WHYCODE_ADDERS", "AshutoshP29, reviewer")
+    c = client(FakeGraph())
+    stranger = session({**USER, "login": "octocat"})
+    assert c.get("/api/auth/me", cookies=stranger).json()["can_add_repos"] is False
+    for path, body in (
+        ("/api/repos", {"repo": "pallets/flask", "keep_updated": False}),
+        ("/api/repos/sync", {"repo": REPO}),
+        ("/api/repos/reingest", {"repo": REPO}),
+    ):
+        res = c.post(path, json=body, cookies=stranger)
+        assert res.status_code == 403, path
+        assert res.json()["detail"] == (
+            "Adding and re-reading repositories is limited to the WhyCode team."
+        )
+    team = session({**USER, "login": "ashutoshp29"})  # logins compare without case
+    assert c.get("/api/auth/me", cookies=team).json()["can_add_repos"] is True
+
+
+def test_may_add_repos_rules(auth_on, monkeypatch):
+    user = auth.User(login="Someone", name=None, avatar_url=None)
+    monkeypatch.delenv("WHYCODE_ADDERS", raising=False)
+    assert auth.may_add_repos(user) and not auth.may_add_repos(None)
+    monkeypatch.setenv("WHYCODE_ADDERS", " , ")
+    assert auth.may_add_repos(user)  # an empty list means no limit
+    monkeypatch.setenv("WHYCODE_ADDERS", "someone")
+    assert auth.may_add_repos(user)
+    monkeypatch.setenv(auth.AUTH_ENV, "")
+    assert auth.may_add_repos(None)  # sign-in off: local development

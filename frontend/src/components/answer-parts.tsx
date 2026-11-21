@@ -112,8 +112,8 @@ export function HedgedWarning({ warning, factors }: { warning: string; factors: 
 export function PartialHistoryNote() {
   return (
     <p className="mt-4 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 text-sm text-muted">
-      Partial history: this repository is still being read, so older decisions may be missing and confidence is
-      lower.
+      Partial history: WhyCode has not read every pull request of this repository, so older decisions may be
+      missing.
     </p>
   )
 }

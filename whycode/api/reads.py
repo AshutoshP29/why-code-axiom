@@ -88,6 +88,7 @@ def _repo(row: dict) -> m.Repo:
         last_synced_at=native(r.get("last_synced_at")),
         commits_count=row["commits"],
         decisions_count=row["decisions"],
+        added=r.get("added_at") is not None,
     )
 
 

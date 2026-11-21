@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useIngestion, useReingest } from '../api/queries'
 import { Badge, Button, ErrorNotice, Loading, ProgressBar } from '../components/ui'
-import { INGEST_ACTIONS } from '../lib/features'
+import { useIngestActions } from '../lib/features'
 import { INGEST_STAGE_TITLE, STATE_TONE } from '../lib/stages'
 import { BADGE_TONE, cx } from '../lib/tones'
 import { useRepo } from '../state/repo-context'
@@ -15,6 +15,7 @@ export function IngestionView({ repoId }: { repoId: string }) {
   const { data, error, refetch } = useIngestion(repoId)
   const reingest = useReingest()
   const [blocked, setBlocked] = useState(false)
+  const ingestActions = useIngestActions()
 
   if (error) return <ErrorNotice error={error} onRetry={() => refetch()} />
   if (!data) return <Loading label="Checking progress" />
@@ -65,13 +66,13 @@ export function IngestionView({ repoId }: { repoId: string }) {
         </ol>
 
         <p className="mt-4 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 text-xs text-muted">
-          Partial history: answers may miss older decisions and will show a lower confidence.
+          Partial history: answers may miss older decisions.
         </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
           {stopped ? (
             <>
-              {INGEST_ACTIONS && (
+              {ingestActions && data.repo.added && (
                 <Button variant="primary" disabled={reingest.isPending} onClick={() => reingest.mutate(repoId)}>
                   {reingest.isPending ? 'Starting…' : 'Run it again'}
                 </Button>

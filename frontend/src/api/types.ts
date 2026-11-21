@@ -16,6 +16,7 @@ export interface Repo {
   last_synced_at: string | null
   commits_count: number
   decisions_count: number
+  added: boolean // added through Add repository; only these can be synced or re-run from the screens
 }
 
 /** Result of checking a GitHub link before ingesting it (Add repository dialog). */
@@ -405,4 +406,5 @@ export interface User {
 export interface Session {
   enabled: boolean // false: this API has sign-in off and every screen is open
   user: User | null
+  can_add_repos: boolean // may add, sync and re-run repositories
 }

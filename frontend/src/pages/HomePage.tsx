@@ -33,7 +33,7 @@ function HomeContent({ repoId, partialNote }: { repoId: string; partialNote: str
     <div className="mx-auto w-full max-w-7xl px-4 py-10 sm:px-6">
       {partialNote && (
         <p className="mb-6 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 text-sm text-muted">
-          Partial history: {partialNote}, so answers may miss older decisions and will show a lower confidence.
+          Partial history: {partialNote}, so answers may miss older decisions.
         </p>
       )}
 
@@ -148,6 +148,8 @@ export function HomePage() {
     ? null
     : repo.status === 'ERROR'
       ? `reading ${repo.id} stopped before it finished`
-      : `${repo.id} is still being read`
+      : repo.status === 'READY'
+        ? `WhyCode read the most-discussed pull requests of ${repo.id}, not every one`
+        : `${repo.id} is still being read`
   return <HomeContent repoId={repo.id} partialNote={note} />
 }

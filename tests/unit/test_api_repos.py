@@ -131,16 +131,16 @@ def test_the_estimate_caps_a_large_repo_to_its_most_discussed_prs():
     check = repos.estimate(NEW, PUBLIC, graph_nodes=10_000)
     assert (check.found, check.is_public, check.capped) == (True, True, True)
     assert (check.commits, check.pull_requests, check.issues) == (6_000, 3_000, 2_500)
-    # 20 PRs at 2.5 calls each plus 10 for supersession.
-    assert check.ai_calls == 60
-    assert (check.minutes_low, check.minutes_high) == (13, 36)
+    # 20 PRs at 1.5 calls each plus 5 for supersession.
+    assert check.ai_calls == 35
+    assert (check.minutes_low, check.minutes_high) == (6, 24)
     assert check.fits_free_tier
 
 
 def test_a_small_repo_reads_what_it_has():
     small = repos.Facts(found=True, public=True, size_kb=500, commits=80, eligible=4)
     check = repos.estimate(NEW, small, graph_nodes=0)
-    assert (check.capped, check.ai_calls, check.minutes_low) == (False, 20, 5)
+    assert (check.capped, check.ai_calls, check.minutes_low) == (False, 11, 3)
 
 
 def test_a_repo_that_would_overflow_the_free_graph_does_not_fit():
@@ -349,7 +349,7 @@ def test_the_routes_check_add_and_show_progress(monkeypatch):
 
     res = c.post("/api/repos/check", json={"input": "https://github.com/expressjs/express"})
     assert res.status_code == 200
-    assert (res.json()["repo"], res.json()["ai_calls"]) == (NEW, 60)
+    assert (res.json()["repo"], res.json()["ai_calls"]) == (NEW, 35)
 
     res = c.post("/api/repos", json={"repo": NEW, "keep_updated": False})
     assert (res.status_code, res.json()["status"]) == (200, "QUEUED")

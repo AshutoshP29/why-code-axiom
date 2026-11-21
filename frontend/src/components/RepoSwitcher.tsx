@@ -2,7 +2,7 @@ import { useRef, useState } from 'react'
 import { useLocation, useNavigate } from 'react-router'
 import type { Repo, RepoStatus } from '../api/types'
 import { parseRepoInput } from '../lib/entity'
-import { INGEST_ACTIONS } from '../lib/features'
+import { useIngestActions } from '../lib/features'
 import { formatCompact, formatRelative } from '../lib/format'
 import { useDismiss, useNow } from '../lib/hooks'
 import { stageSummary } from '../lib/stages'
@@ -55,6 +55,7 @@ export function RepoSwitcher() {
   const [open, setOpen] = useState(false)
   const [filter, setFilter] = useState('')
   const [adding, setAdding] = useState<string | null>(null) // input to prefill, or null when closed
+  const canAdd = useIngestActions()
   const rootRef = useRef<HTMLDivElement>(null)
   const buttonRef = useRef<HTMLButtonElement>(null)
   useDismiss(rootRef, open, () => setOpen(false))
@@ -154,7 +155,7 @@ export function RepoSwitcher() {
             ))}
             {shown.length === 0 && <li className="px-3 py-2 text-xs text-faint">No repository matches “{filter}”.</li>}
           </ul>
-          {INGEST_ACTIONS && (
+          {canAdd && (
             <div className="mt-2 border-t border-line pt-2">
               <button
                 type="button"

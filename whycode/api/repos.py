@@ -42,11 +42,13 @@ STALE_AFTER = timedelta(hours=2)  # ingest.yml times out after 90 minutes
 MAX_REPO_KB = 300_000  # GitHub's `size`; a bigger clone is too slow to map
 AURA_FREE_NODES = 200_000  # the free Aura instance's node limit
 
-# Estimates for the check, not measurements. psf/requests was budgeted 160 calls for 63 PRs.
-CALLS_PER_PR = 2.5
-SUPERSESSION_CALLS = 10
-MINUTES_SETUP = (3, 6)  # runner, install, clone
-MINUTES_PER_PR = (0.5, 1.5)  # GitHub reads plus AI calls, which free tiers slow down
+# Estimates for the check, kept above what runs used. Measured: pallets/itsdangerous, 5 PRs, took
+# 6 calls (one per PR, one supersession) and 3.4 minutes in all on GitHub Actions; psf/requests'
+# much longer PRs averaged about 2.5 calls each, split into parts.
+CALLS_PER_PR = 1.5
+SUPERSESSION_CALLS = 5
+MINUTES_SETUP = (2, 4)  # runner, install, clone
+MINUTES_PER_PR = (0.2, 1.0)  # GitHub reads plus AI calls, which free tiers slow down
 NODES_PER_PR = 40  # decisions, evidence, people, issues, commits around one PR
 KB_PER_ENTITY = 5  # psf/requests: about 1,650 code entities
 

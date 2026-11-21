@@ -21,6 +21,7 @@ def test_repos_lists_repo_nodes_with_counts():
             "last_synced_at": "2026-10-28T12:00:00Z",
             "commits_count": 3,
             "decisions_count": 1,
+            "added": False,  # read by the team's scripts, not added from the screens
         }
     ]
 

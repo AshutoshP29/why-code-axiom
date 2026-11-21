@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 import { renderApp } from '../test/render'
 
-vi.mock('./features', () => ({ INGEST_ACTIONS: false }))
+vi.mock('./features', () => ({ INGEST_ACTIONS: false, useIngestActions: () => false }))
 
 describe('with ingestion actions off (the live build)', () => {
   it('shows no Re-run ingestion, Sync now or Add a repository', async () => {

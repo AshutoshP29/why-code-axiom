@@ -70,7 +70,7 @@ def get_attempts():
         store = _gap_store()
     except (psycopg.Error, ConfigError):
         return auth.get_attempts()
-    return auth.PgAttempts(store.conn)
+    return auth.PgAttempts(store)  # through the store, so it reconnects too
 
 
 def get_gaps() -> GapStore:
@@ -232,6 +232,7 @@ def check_repo(run: RunDep, body: m.RepoCheckRequest, client: GitHubClientDep):
 
 @router.post("/repos", response_model=m.Repo)
 def add_repo(run: RunDep, body: m.AddRepoRequest, client: GitHubClientDep, user: UserDep):
+    auth.require_adder(user)
     repo = repos.parse_repo_input(body.repo)
     with client:
         return repos.add(
@@ -244,22 +245,23 @@ def add_repo(run: RunDep, body: m.AddRepoRequest, client: GitHubClientDep, user:
         )
 
 
-def _rerun(run: Run, body: m.RepoRequest, client: httpx.Client) -> m.Repo:
+def _rerun(run: Run, body: m.RepoRequest, client: httpx.Client, user: auth.User | None) -> m.Repo:
+    auth.require_adder(user)
     found = require_repo(run, _normalize(body.repo))
     with client:
         return repos.rerun(run, repos.Dispatcher.from_env(client), found)
 
 
 @router.post("/repos/sync", response_model=m.Repo)
-def sync_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep):
+def sync_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep, user: UserDep):
     """Read the pull requests that are new since the last run."""
-    return _rerun(run, body, client)
+    return _rerun(run, body, client, user)
 
 
 @router.post("/repos/reingest", response_model=m.Repo)
-def reingest_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep):
+def reingest_repo(run: RunDep, body: m.RepoRequest, client: GitHubClientDep, user: UserDep):
     """Run again after an error or a stop: PRs already in the graph are kept, the rest read."""
-    return _rerun(run, body, client)
+    return _rerun(run, body, client, user)
 
 
 @router.get("/ingestion", response_model=m.Ingestion)
