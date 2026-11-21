@@ -43,7 +43,7 @@ export function AnsweredView({
 
   return (
     <div className="grid flex-1 grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)_300px]">
-      <aside className="hidden border-r border-line bg-chrome lg:block">
+      <aside aria-label="Code explorer" className="hidden border-r border-line bg-chrome lg:block">
         <ExplorerPanel activeEntity={answer.entity} />
       </aside>
 
@@ -116,7 +116,7 @@ export function AnsweredView({
         </section>
       </article>
 
-      <aside className="space-y-7 border-t border-line bg-chrome p-4 lg:border-t-0 lg:border-l">
+      <aside aria-label="Answer details" className="space-y-7 border-t border-line bg-chrome p-4 lg:border-t-0 lg:border-l">
         <GraphNeighbourhood nodes={answer.graph.nodes} edges={answer.graph.edges} current={answer.entity} />
         <section>
           <SectionLabel>Who to ask</SectionLabel>

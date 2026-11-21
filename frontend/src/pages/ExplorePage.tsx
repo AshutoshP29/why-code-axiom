@@ -44,7 +44,7 @@ export function ExplorePage() {
 
   return (
     <div className="grid flex-1 grid-cols-1 lg:grid-cols-[232px_minmax(0,1fr)]">
-      <aside className="hidden border-r border-line bg-chrome lg:block">
+      <aside aria-label="Code explorer" className="hidden border-r border-line bg-chrome lg:block">
         <ExplorerPanel activeFileId={file?.entity.id ?? null} />
       </aside>
       <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-8">
