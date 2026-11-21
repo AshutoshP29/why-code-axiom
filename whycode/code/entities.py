@@ -1,4 +1,8 @@
-"""Code entities in one Python file, parsed with tree-sitter: File, Class, Function, ConfigKey.
+"""Code entities in one source file, parsed with tree-sitter: File, Class, Function, ConfigKey.
+
+Python is read by the walker below. JavaScript, and any language added to
+whycode/code/languages.py, is read by running that language's query (_QueryWalker), with the same
+rules wherever the language has the construct.
 
 Only parsing lives here. The caller supplies the file's text (from disk or a git blob) and gets
 back entities with graph ids from whycode/ids.py; writing them to Neo4j is someone else's job.
@@ -14,6 +18,16 @@ Rules:
   is one graph node; `path` says where this one was found.
 - An id seen twice in one file (property setters, if/else redefinitions) keeps the first.
 - A file with syntax errors still yields whatever tree-sitter recovered, with the flag set.
+
+JavaScript, as the query in languages.py finds it:
+- Classes are declarations and named class expressions; `const Widget = class {}` is "Widget".
+- Functions are declarations, methods (getters, setters and the constructor included), and
+  functions assigned to a name: `const f = () => {}`, `res.send = function send() {}` ("send"),
+  `{ close: function () {} }` ("close"). Callbacks passed as arguments are not entities.
+- ConfigKeys are top-level `const`/`let`/`var` declarations, exported or not, with an
+  UPPER_CASE name and a value that is not a function or class; and parameter defaults that
+  reference a constant (`retries = MAX_RETRIES`, `timeout = config.TIMEOUT`). Class fields
+  (`static LIMIT = 5`) are not, as class-level names are not for Python.
 """
 
 import re
@@ -22,11 +36,15 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 
 import tree_sitter_python as tspython
-from tree_sitter import Language, Node, Parser
+from tree_sitter import Language, Node, Parser, QueryCursor
 
+from whycode.code.languages import QUERY_LANGUAGES, QueryLanguage, language_for
 from whycode.ids import make_id, normalize_repo
 
-SUPPORTED_SUFFIXES = frozenset({".py"})
+_PYTHON_SUFFIX = ".py"
+# Every suffix some parser reads. is_supported() is the real test: it also leaves out minified
+# bundles such as app.min.js.
+SUPPORTED_SUFFIXES = frozenset({_PYTHON_SUFFIX}).union(*(lang.suffixes for lang in QUERY_LANGUAGES))
 
 _LANGUAGE = Language(tspython.language())
 # Two characters or more, so single-letter TypeVars ("T = TypeVar('T')") are not config.
@@ -75,8 +93,12 @@ class UnsupportedFileError(ValueError):
     pass
 
 
+def _is_python(path: str) -> bool:
+    return PurePosixPath(path.replace("\\", "/")).suffix == _PYTHON_SUFFIX
+
+
 def is_supported(path: str) -> bool:
-    return PurePosixPath(path.replace("\\", "/")).suffix in SUPPORTED_SUFFIXES
+    return _is_python(path) or language_for(path) is not None
 
 
 def normalize_path(path: str) -> str:
@@ -91,17 +113,25 @@ def normalize_path(path: str) -> str:
 
 
 def parse_file(repo: str, path: str, source: bytes | str) -> ParsedFile:
-    """Parse one Python file into its entities. Raises UnsupportedFileError for other types."""
+    """Parse one code file into its entities. Raises UnsupportedFileError for other types."""
     path = normalize_path(path)
-    if not is_supported(path):
-        raise UnsupportedFileError(f"not a Python file: {path!r}")
+    lang = None if _is_python(path) else language_for(path)
+    if lang is None and not _is_python(path):
+        raise UnsupportedFileError(f"not a supported code file: {path!r}")
     data = source.encode("utf-8") if isinstance(source, str) else source
-    tree = Parser(_LANGUAGE).parse(data)
-    return _Walker(normalize_repo(repo), path).run(tree.root_node, data)
+    if lang is None:
+        tree = Parser(_LANGUAGE).parse(data)
+        return _Walker(normalize_repo(repo), path).run(tree.root_node, data)
+    tree = Parser(lang.language).parse(data)
+    return _QueryWalker(normalize_repo(repo), path, lang).run(tree.root_node, data)
 
 
 def _text(node: Node | None) -> str:
     return node.text.decode("utf-8", errors="replace") if node is not None and node.text else ""
+
+
+def _line_count(data: bytes) -> int:
+    return max(1, data.count(b"\n") + (0 if not data or data.endswith(b"\n") else 1))
 
 
 def _end_line(node: Node) -> int:
@@ -163,14 +193,13 @@ class _Walker:
         self.entities: dict[str, CodeEntity] = {}  # by id; dicts keep insertion order
 
     def run(self, root: Node, data: bytes) -> ParsedFile:
-        line_count = data.count(b"\n") + (0 if not data or data.endswith(b"\n") else 1)
         self._add(
             self.file_id,
             EntityKind.FILE,
             PurePosixPath(self.path).name,
             PurePosixPath(self.path).name,
             1,
-            max(1, line_count),
+            _line_count(data),
             None,
         )
         self._visit_children(root, scope=[], parent_id=self.file_id)
@@ -265,3 +294,153 @@ class _Walker:
                     self.file_id,
                     _value_text(right),
                 )
+
+
+@dataclass
+class _Definition:
+    """A class or function a query found, before it becomes an entity."""
+
+    kind: EntityKind
+    name: str
+    node: Node
+    qualified: str = ""
+    id: str = ""
+    parent_id: str = ""
+
+
+def _name_text(node: Node) -> str:
+    """A definition's name, whitespace collapsed; a quoted object key loses its quotes."""
+    text = _text(node)
+    if node.type == "string" and len(text) >= 2:
+        text = text[1:-1]
+    return " ".join(text.split())
+
+
+class _QueryWalker:
+    """Entities from the matches of a QueryLanguage's query (see whycode/code/languages.py)."""
+
+    def __init__(self, repo: str, path: str, lang: QueryLanguage):
+        self.repo = repo
+        self.path = path
+        self.lang = lang
+        self.file_id = make_id(repo, "file", path)
+
+    def run(self, root: Node, data: bytes) -> ParsedFile:
+        spans: dict[tuple[int, int], _Definition] = {}
+        configs: list[tuple[Node, Node, Node]] = []  # (statement, name, value)
+        defaults: list[tuple[Node, Node, Node]] = []  # (parameter, name, value)
+        for _, caps in QueryCursor(self.lang.query).matches(root):
+            name = caps["name"][0]
+            value = caps["value"][0] if "value" in caps else None
+            if "config" in caps and value is not None:
+                configs.append((caps["config"][0], name, value))
+            elif "default" in caps and value is not None:
+                defaults.append((caps["default"][0], name, value))
+            elif "class" in caps or "function" in caps:
+                kind = EntityKind.CLASS if "class" in caps else EntityKind.FUNCTION
+                node = caps["class" if kind is EntityKind.CLASS else "function"][0]
+                if text := _name_text(name):
+                    spans.setdefault(
+                        (node.start_byte, node.end_byte), _Definition(kind, text, node)
+                    )
+        defs = self._nest(
+            sorted(spans.values(), key=lambda d: (d.node.start_byte, -d.node.end_byte))
+        )
+
+        found = [
+            (d.node, self._entity(d.id, d.kind, d.name, d.qualified, d.node, d.parent_id))
+            for d in defs
+        ]
+        for stmt, name_node, value in configs:
+            name = _text(name_node)
+            if _UPPER_RE.match(name) and value.type not in self.lang.code_values:
+                id_ = make_id(self.repo, "cfg", name)
+                cfg = EntityKind.CONFIG_KEY
+                found.append(
+                    (
+                        stmt,
+                        self._entity(id_, cfg, name, name, stmt, self.file_id, _value_text(value)),
+                    )
+                )
+        for param, name_node, value in defaults:
+            owner = self._owner(param, defs)
+            if owner is None or not self._references_constant(value):
+                continue
+            name = _text(name_node)
+            entity = self._entity(
+                make_id(self.repo, "cfg", name),
+                EntityKind.CONFIG_KEY,
+                name,
+                f"{owner.qualified}.{name}",
+                param,
+                owner.id,
+                _value_text(value),
+            )
+            found.append((param, entity))
+
+        base = PurePosixPath(self.path).name
+        entities = {
+            self.file_id: CodeEntity(
+                self.file_id,
+                self.repo,
+                EntityKind.FILE,
+                base,
+                base,
+                self.path,
+                1,
+                _line_count(data),
+                None,
+            )
+        }
+        # Source order, outer before inner; an id seen twice (a getter and its setter) keeps the
+        # first.
+        for _, e in sorted(found, key=lambda f: (f[0].start_byte, -f[0].end_byte)):
+            entities.setdefault(e.id, e)
+        return ParsedFile(self.path, tuple(entities.values()), root.has_error)
+
+    def _entity(self, id_, kind, name, qualified, node, parent_id, value=None) -> CodeEntity:
+        return CodeEntity(
+            id_,
+            self.repo,
+            kind,
+            name,
+            qualified,
+            self.path,
+            node.start_point[0] + 1,
+            _end_line(node),
+            parent_id,
+            value,
+        )
+
+    def _nest(self, defs: list[_Definition]) -> list[_Definition]:
+        """Give each definition (sorted by start, outer first) its qualified name and parent: the
+        innermost definition around it, else the file."""
+        stack: list[_Definition] = []
+        for d in defs:
+            while stack and stack[-1].node.end_byte < d.node.end_byte:
+                stack.pop()
+            parent = stack[-1] if stack else None
+            d.qualified = f"{parent.qualified}.{d.name}" if parent else d.name
+            d.parent_id = parent.id if parent else self.file_id
+            prefix = "cls" if d.kind is EntityKind.CLASS else "fn"
+            d.id = make_id(self.repo, prefix, f"{self.path}::{d.qualified}")
+            stack.append(d)
+        return defs
+
+    @staticmethod
+    def _owner(param: Node, defs: list[_Definition]) -> _Definition | None:
+        """The function whose own parameter list holds `param`: the definition itself
+        (`function f(x = A)`) or the function that is its value (`const f = (x = A) => x`).
+        A default in a callback inside f is not f's."""
+        params = param.parent
+        fn = params.parent if params is not None else None
+        if fn is None:
+            return None
+        holders = [fn] if fn.parent is None else [fn, fn.parent]
+        return next((d for d in defs if d.kind is EntityKind.FUNCTION and d.node in holders), None)
+
+    def _references_constant(self, value: Node) -> bool:
+        if value.type == "identifier":
+            return bool(_UPPER_RE.match(_text(value)))
+        field = self.lang.member_name_field.get(value.type)
+        return field is not None and bool(_UPPER_RE.match(_text(value.child_by_field_name(field))))

@@ -86,7 +86,7 @@ def test_invented_config_key_is_dropped(index):
 
 def test_code_name_in_a_non_python_file_is_dropped(index):
     r = check(index, {"kind": "function", "path": "README.md", "name": "install"})
-    assert r.dropped[0].reason == "'README.md' is not parsed Python code"
+    assert r.dropped[0].reason == "'README.md' is not parsed code"
 
 
 def test_missing_name_is_dropped(index):

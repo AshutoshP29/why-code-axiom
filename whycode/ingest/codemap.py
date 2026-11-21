@@ -2,10 +2,10 @@
 
     python -m whycode.ingest.codemap --repo psf/requests [--target aura|test] [--since 2020-01-01]
 
-Clones (or updates) https://github.com/<repo> into cache/repos/<owner>/<name>, parses every .py
-file at the default branch's HEAD, and reads `git log` for commits, renames and line counts.
-Everything is written with MERGE (whycode.graph.writer), so a second run changes no count, and
-Decision nodes are never touched.
+Clones (or updates) https://github.com/<repo> into cache/repos/<owner>/<name>, parses every Python
+and JavaScript file at the default branch's HEAD, and reads `git log` for commits, renames and
+line counts. Everything is written with MERGE (whycode.graph.writer), so a second run changes no
+count, and Decision nodes are never touched.
 """
 
 import argparse
@@ -15,7 +15,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath
 
-from whycode.code.entities import EntityKind, parse_file
+from whycode.code.entities import SUPPORTED_SUFFIXES, EntityKind, is_supported, parse_file
 from whycode.graph.build import GraphBatch
 from whycode.ids import make_id, normalize_repo
 from whycode.ingest.links import merge_pr_number, parse_revert, subject_pr_numbers
@@ -62,10 +62,12 @@ def clone_or_update(url: str, dest: Path) -> str:
     return git(dest, "rev-parse", "HEAD").strip()
 
 
-def python_files(root: Path) -> list[str]:
-    """Tracked .py files at HEAD, repo-relative with forward slashes, sorted."""
-    out = git(root, "ls-files", "-z", "--", "*.py")
-    return sorted(p for p in out.split("\0") if p)
+def code_files(root: Path) -> list[str]:
+    """Tracked files at HEAD that a parser reads (Python, JavaScript; minified bundles left out),
+    repo-relative with forward slashes, sorted."""
+    patterns = [f"*{suffix}" for suffix in sorted(SUPPORTED_SUFFIXES)]
+    out = git(root, "ls-files", "-z", "--", *patterns)
+    return sorted(p for p in out.split("\0") if p and is_supported(p))
 
 
 def rename_aliases(root: Path) -> dict[str, list[str]]:
@@ -157,7 +159,7 @@ def module_names(paths: list[str]) -> dict[str, str]:
 
 
 def build_code_map(repo: str, root: Path, head_sha: str | None = None) -> GraphBatch:
-    """File, Class, Function, ConfigKey and Module nodes for every .py file at HEAD.
+    """File, Class, Function, ConfigKey and Module nodes for every code file at HEAD.
 
     File CONTAINS its classes, functions and config keys, a class its methods (as the PR graph
     does); Module CONTAINS the files directly in its package. A config key named in several
@@ -175,7 +177,7 @@ def build_code_map(repo: str, root: Path, head_sha: str | None = None) -> GraphB
         url=f"https://github.com/{repo}",
         last_commit_sha=head_sha,
     )
-    files = python_files(root)
+    files = code_files(root)
     aliases = rename_aliases(root)
     modules = module_names(files)
     for module in modules.values():

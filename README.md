@@ -73,9 +73,10 @@ decision is kept only if every evidence quote is found verbatim (whitespace asid
 it cites.
 
 After extraction, each decision's `affects` is checked against the code the PR touched: the PR's
-changed Python files are parsed with tree-sitter (`whycode/code/`), and a file, function, class or
-config key is kept only if it really exists there. Paths are mapped to where the files live today
-(`requests/compat.py` -> `src/requests/compat.py`). Dropped items are printed with a reason.
+changed Python and JavaScript files are parsed with tree-sitter (`whycode/code/`), and a file,
+function, class or config key is kept only if it really exists there. Paths are mapped to where
+the files live today (`requests/compat.py` -> `src/requests/compat.py`). Dropped items are printed
+with a reason. Another language is a grammar plus one query in `whycode/code/languages.py`.
 
 ### Phase 1 slice: one PR end to end
 

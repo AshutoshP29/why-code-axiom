@@ -114,7 +114,7 @@ def resolve_affects(items: list[Affected], index: PrCodeIndex) -> AffectsCheck:
             why = (
                 "code not fetched; run fetch_pr again"
                 if f.pr_path in index.missing_code
-                else f"{f.pr_path!r} is not parsed Python code"
+                else f"{f.pr_path!r} is not parsed code"
             )
             out.dropped.append(DroppedAffect(item, why))
             continue
