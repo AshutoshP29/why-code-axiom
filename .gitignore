@@ -22,3 +22,6 @@ htmlcov/
 
 # Local data
 cache/
+.vercel
+.env*
+!.env.example

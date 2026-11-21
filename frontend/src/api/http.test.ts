@@ -69,3 +69,20 @@ describe('createHttpApi', () => {
     await expect(createHttpApi('/api', f).listRepos()).rejects.toMatchObject({ status: 502, message: 'Bad Gateway' })
   })
 })
+
+describe('sign-in calls', () => {
+  it('reads the sign-in state', async () => {
+    const session = { enabled: true, user: { login: 'octocat', name: null, avatar_url: null } }
+    const f = fakeFetch(session)
+    expect(await createHttpApi('/api', f).getMe()).toEqual(session)
+    expect(calledUrl(f).pathname).toBe('/api/auth/me')
+  })
+
+  it('signs out with an empty 204 and builds the login link', async () => {
+    const f = vi.fn<typeof fetch>(async () => new Response(null, { status: 204 }))
+    const api = createHttpApi('/api/', f)
+    await expect(api.logout()).resolves.toBeUndefined()
+    expect(calledUrl(f).pathname).toBe('/api/auth/logout')
+    expect(api.loginUrl('/why?q=a b')).toBe('/api/auth/login?next=%2Fwhy%3Fq%3Da+b')
+  })
+})

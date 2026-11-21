@@ -358,4 +358,49 @@ export interface WhyCodeApi {
   getEvaluation(repo: string): Promise<Evaluation>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
+  /** Whether sign-in is on, and who is signed in. */
+  getMe(): Promise<Session>
+  logout(): Promise<void>
+  /** Where "Sign in with GitHub" goes; `next` is the page to come back to. */
+  loginUrl(next: string): string
+  /** PR Guard: the decisions a pull request touches. `pull` is "6710", "#6710" or the PR's link. */
+  checkPull(repo: string, pull: string): Promise<GuardReport>
+}
+
+export interface GuardPull {
+  number: number
+  title: string
+  url: string
+  state: 'open' | 'closed' | 'merged'
+  author: string | null
+  opened_at: string
+}
+
+export interface GuardHit {
+  decision: Decision
+  evidence: EvidenceStep[]
+  people: Person[]
+  touched: Entity[] // what the PR changes that this decision governs
+  level: 'code' | 'file' // code: the PR changes that function, class or config key; file: only its file
+}
+
+export interface GuardReport {
+  repo: string
+  pull: GuardPull
+  files_changed: number
+  python_files_read: number
+  changed: Entity[]
+  hits: GuardHit[] // code-level first, newest decision first
+  notes: string[]
+}
+
+export interface User {
+  login: string
+  name: string | null
+  avatar_url: string | null
+}
+
+export interface Session {
+  enabled: boolean // false: this API has sign-in off and every screen is open
+  user: User | null
 }

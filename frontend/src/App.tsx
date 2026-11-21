@@ -2,9 +2,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { ApiContext, type ApiContextValue } from './api/context'
+import { AuthGate } from './components/AuthGate'
 import { Layout } from './components/Layout'
 import { EvaluationPage } from './pages/EvaluationPage'
 import { ExplorePage } from './pages/ExplorePage'
+import { GuardPage } from './pages/GuardPage'
 import { HealthPage } from './pages/HealthPage'
 import { HomePage } from './pages/HomePage'
 import { LineagePage } from './pages/LineagePage'
@@ -29,7 +31,9 @@ export function AppProviders({
   return (
     <QueryClientProvider client={client}>
       <ApiContext value={api}>
-        <RepoProvider>{children}</RepoProvider>
+        <AuthGate>
+          <RepoProvider>{children}</RepoProvider>
+        </AuthGate>
       </ApiContext>
     </QueryClientProvider>
   )
@@ -45,6 +49,7 @@ export function AppRoutes() {
         <Route path="health" element={<HealthPage />} />
         <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="explore" element={<ExplorePage />} />
+        <Route path="guard" element={<GuardPage />} />
         <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>

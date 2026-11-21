@@ -34,6 +34,7 @@ function dispatch(api: WhyCodeApi, { method, path, params: q, body }: Call): Pro
     case 'GET /health': return api.getHealth(q.repo)
     case 'GET /evaluation': return api.getEvaluation(q.repo)
     case 'POST /gaps': return api.flagGap(b.repo, b.entity_id, b.question)
+    case 'GET /auth/me': return api.getMe() // null: sign-in off, as on a local API
     default: return Promise.reject(new ApiError(404, `No route ${method} ${path}`))
   }
 }
@@ -82,7 +83,7 @@ test('Talks to the API: no sample badge, and requests carry the repo and graph i
     params: {},
     body: { repo: 'psf/requests', entity_id: ID.rebuildAuth, question: 'Why does rebuild_auth strip headers?' },
   })
-  const scoped = calls.filter((c) => c.method === 'GET' && c.path !== '/repos')
+  const scoped = calls.filter((c) => c.method === 'GET' && c.path !== '/repos' && !c.path.startsWith('/auth/'))
   expect(scoped.length).toBeGreaterThan(0)
   for (const c of scoped) expect(c.params.repo, `${c.path} must say which repo`).toBe('psf/requests')
 })

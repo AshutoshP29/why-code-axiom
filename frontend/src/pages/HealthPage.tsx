@@ -6,6 +6,7 @@ import { Dialog } from '../components/Dialog'
 import { EvalTable } from '../components/EvalTable'
 import { Badge, Button, Card, ErrorNotice, Loading, ProgressBar } from '../components/ui'
 import { entityLabel } from '../lib/entity'
+import { INGEST_ACTIONS } from '../lib/features'
 import { formatCount, formatDateTime, plural } from '../lib/format'
 import { useTitle } from '../lib/hooks'
 import { whyPath } from '../lib/routes'
@@ -59,9 +60,11 @@ export function HealthPage() {
         </div>
         <div className="flex gap-2">
           <Button onClick={() => downloadReport(repo.id, data)}>Export report</Button>
-          <Button variant="primary" onClick={() => setConfirming(true)}>
-            Re-run ingestion
-          </Button>
+          {INGEST_ACTIONS && (
+            <Button variant="primary" onClick={() => setConfirming(true)}>
+              Re-run ingestion
+            </Button>
+          )}
         </div>
       </div>
 

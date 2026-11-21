@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel, TypeAdapter
 
 from whycode.api import models as m
+from whycode.api.auth import Session, User
 from whycode.config import PROJECT_ROOT
 
 TYPES_TS = PROJECT_ROOT / "frontend" / "src" / "api" / "types.ts"
@@ -50,6 +51,11 @@ MODELS: dict[str, type[BaseModel]] = {
     "EvalRow": m.EvalRow,
     "EvaluationSummary": m.EvaluationSummary,
     "Health": m.Health,
+    "User": User,
+    "Session": Session,
+    "GuardPull": m.GuardPull,
+    "GuardHit": m.GuardHit,
+    "GuardReport": m.GuardReport,
 }
 INLINE = {
     ("Overview", "counts"): m.OverviewCounts,

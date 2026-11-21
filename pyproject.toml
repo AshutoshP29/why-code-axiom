@@ -49,3 +49,7 @@ markers = [
     "integration: real local Postgres and local Neo4j container (docker compose up)",
     "live: real GitHub and LLM calls; costs API calls, opt-in only, never in CI",
 ]
+
+[tool.vercel]
+# The API's FastAPI app; Vercel runs it as a Python function (see .vercelignore for what ships).
+entrypoint = "whycode.api.app:app"

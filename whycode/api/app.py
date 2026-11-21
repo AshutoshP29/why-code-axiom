@@ -13,13 +13,14 @@ from datetime import date
 from functools import lru_cache
 from typing import Annotated
 
+import httpx
 import psycopg
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
-from whycode.api import answers, lineage, reads
+from whycode.api import answers, auth, guard, lineage, reads
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -119,7 +120,7 @@ def gap_queue(run: Run, gaps: GapStore | None, repo: str, entity_id: str | None 
 
 RunDep = Annotated[Run, Depends(get_run)]
 RepoDep = Annotated[str, Depends(repo_param)]
-router = APIRouter(prefix="/api")
+router = APIRouter(prefix="/api", dependencies=[Depends(auth.require_user)])
 
 
 @router.get("/repos", response_model=list[m.Repo])
@@ -178,6 +179,17 @@ def get_evaluation(run: RunDep, repo: RepoDep):
     return reads.evaluation(found.id)
 
 
+@router.post("/guard", response_model=m.GuardReport)
+def check_pull(
+    run: RunDep,
+    body: m.GuardRequest,
+    client: Annotated[httpx.Client, Depends(guard.http_client)],
+):
+    repo = require_repo(run, _normalize(body.repo))
+    with client:
+        return guard.check(run, repo, body.pull, guard.GitHubReader(client, guard._token()))
+
+
 @router.post("/gaps", response_model=m.Gap)
 def flag_gap(run: RunDep, body: m.GapRequest, gaps: Annotated[GapStore, Depends(get_gaps)]):
     repo = _normalize(body.repo)
@@ -185,6 +197,18 @@ def flag_gap(run: RunDep, body: m.GapRequest, gaps: Annotated[GapStore, Depends(
     require_entity(run, repo, body.entity_id)
     gaps.add(repo, body.entity_id, body.question)
     return gap_queue(run, gaps, repo, body.entity_id)[0]
+
+
+ops = APIRouter(prefix="/api")
+Q_KEEPALIVE = """// q:keepalive
+MATCH (r:Repo) RETURN count(r) AS n
+"""
+
+
+@ops.get("/keepalive", dependencies=[Depends(auth.require_cron)])
+def keepalive(run: RunDep):
+    """Daily Vercel Cron call: one read keeps the free Aura instance from pausing."""
+    return {"repos": run(Q_KEEPALIVE, {})[0]["n"]}
 
 
 def _not_implemented():
@@ -243,6 +267,8 @@ def create_app() -> FastAPI:
     async def _config(_request: Request, exc: ConfigError):
         return JSONResponse({"detail": str(exc)}, status_code=503)  # names only, never values
 
+    app.include_router(auth.router)
+    app.include_router(ops)
     app.include_router(router)
     return app
 

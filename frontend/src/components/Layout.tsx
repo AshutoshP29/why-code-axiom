@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Outlet, useLocation, useSearchParams } from 'react-router'
+import { INGEST_ACTIONS } from '../lib/features'
 import { useRepo } from '../state/repo-context'
 import { AddRepoDialog } from './AddRepoDialog'
 import { TopBar, type TopBarAsk } from './TopBar'
@@ -10,10 +11,16 @@ function NoRepos() {
   return (
     <div className="mx-auto mt-24 max-w-md px-4 text-center">
       <h1 className="text-2xl font-semibold">No repositories yet</h1>
-      <p className="mt-2 text-sm text-muted">Add a public GitHub repository and WhyCode will read its history.</p>
-      <Button variant="primary" className="mt-5" onClick={() => setAdding(true)}>
-        Add a repository
-      </Button>
+      {INGEST_ACTIONS ? (
+        <>
+          <p className="mt-2 text-sm text-muted">Add a public GitHub repository and WhyCode will read its history.</p>
+          <Button variant="primary" className="mt-5" onClick={() => setAdding(true)}>
+            Add a repository
+          </Button>
+        </>
+      ) : (
+        <p className="mt-2 text-sm text-muted">No repository has been read into this WhyCode yet.</p>
+      )}
       {adding && <AddRepoDialog onClose={() => setAdding(false)} />}
     </div>
   )

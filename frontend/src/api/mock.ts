@@ -25,6 +25,7 @@ import type {
   ConfidenceFactor,
   Entity,
   EntityMatch,
+  GuardHit,
   Health,
   RelatedItem,
   Repo,
@@ -383,6 +384,42 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
         queue.unshift(gap)
       }
       return copy(gap)
+    },
+
+    // Sample data has no accounts: sign-in is off.
+    getMe: async () => ({ enabled: false, user: null }),
+    logout: async () => {},
+    loginUrl: () => '/',
+
+    // A made-up pull request that changes the sample's answered items.
+    async checkPull(repoId, pull) {
+      await wait()
+      const number = Number(/(\d+)\s*$/.exec(pull.trim().replace(/\/files$/, ''))?.[1])
+      if (!number) throw new ApiError(400, 'Give a pull request number, like 6710, or its GitHub link.')
+      const answered = Object.values(ANSWERS).filter((a) => a.verdict !== 'refused')
+      const hits: GuardHit[] = answered.slice(0, 2).map((a) => ({
+        decision: a.decision,
+        evidence: a.evidence_chain,
+        people: a.who_to_ask,
+        touched: [a.entity],
+        level: 'code',
+      }))
+      return copy({
+        repo: findRepo(repoId).id,
+        pull: {
+          number,
+          title: 'Sample pull request',
+          url: `https://github.com/${repoId}/pull/${number}`,
+          state: 'open',
+          author: 'sample-user',
+          opened_at: new Date(now()).toISOString(),
+        },
+        files_changed: 2,
+        python_files_read: 2,
+        changed: hits.map((h) => h.touched[0]),
+        hits,
+        notes: [],
+      })
     },
   }
 }
