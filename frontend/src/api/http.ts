@@ -79,6 +79,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
       post<Gap>('/gaps', { repo, entity_id: entityId, question }),
     getMe: () => get<Session>('/auth/me'),
     logout: () => post<undefined>('/auth/logout', {}),
+    reviewerLogin: (username, password) => post<undefined>('/auth/password', { username, password }),
     loginUrl: (next) => `${base}/auth/login?${new URLSearchParams({ next })}`,
     checkPull: (repo, pull) => post<GuardReport>('/guard', { repo, pull }),
   }

@@ -361,6 +361,8 @@ export interface WhyCodeApi {
   /** Whether sign-in is on, and who is signed in. */
   getMe(): Promise<Session>
   logout(): Promise<void>
+  /** The reviewer account (a username and password), for evaluators and scanners. */
+  reviewerLogin(username: string, password: string): Promise<void>
   /** Where "Sign in with GitHub" goes; `next` is the page to come back to. */
   loginUrl(next: string): string
   /** PR Guard: the decisions a pull request touches. `pull` is "6710", "#6710" or the PR's link. */

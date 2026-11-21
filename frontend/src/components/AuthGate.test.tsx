@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router'
 import { describe, expect, it, vi } from 'vitest'
 import { AppProviders, AppRoutes } from '../App'
+import { ApiError } from '../api/http'
 import { createMockApi } from '../api/mock'
 import type { User, WhyCodeApi } from '../api/types'
 
@@ -54,5 +55,39 @@ describe('sign-in', () => {
     renderLive(createMockApi({ delayMs: 0 }), '/health')
     expect(await screen.findByRole('heading', { name: 'Graph health' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Sign out' })).not.toBeInTheDocument()
+  })
+})
+
+describe('reviewer sign-in', () => {
+  function signedOut() {
+    const api = createMockApi({ delayMs: 0 })
+    let signedIn = false
+    api.getMe = async () => ({ enabled: true, user: signedIn ? { ...OCTOCAT, login: 'reviewer' } : null })
+    api.reviewerLogin = vi.fn(async (username: string, password: string) => {
+      if (password !== 'right-password') throw new ApiError(401, 'Wrong username or password.')
+      signedIn = username === 'reviewer'
+    })
+    return api
+  }
+
+  it('signs in with the reviewer username and password and shows the screens', async () => {
+    const user = userEvent.setup()
+    const api = signedOut()
+    renderLive(api, '/health')
+    await user.type(await screen.findByLabelText('Username'), ' reviewer ')
+    await user.type(screen.getByLabelText('Password'), 'right-password')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(api.reviewerLogin).toHaveBeenCalledWith('reviewer', 'right-password')
+    expect(await screen.findByRole('heading', { name: 'Graph health' })).toBeInTheDocument()
+  })
+
+  it('says why a sign-in failed and stays on the form', async () => {
+    const user = userEvent.setup()
+    renderLive(signedOut(), '/health')
+    await user.type(await screen.findByLabelText('Username'), 'reviewer')
+    await user.type(screen.getByLabelText('Password'), 'wrong')
+    await user.click(screen.getByRole('button', { name: 'Sign in' }))
+    expect(await screen.findByRole('alert')).toHaveTextContent('Wrong username or password.')
+    expect(screen.getByRole('link', { name: 'Sign in with GitHub' })).toBeInTheDocument()
   })
 })

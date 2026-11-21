@@ -389,6 +389,9 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
     // Sample data has no accounts: sign-in is off.
     getMe: async () => ({ enabled: false, user: null }),
     logout: async () => {},
+    reviewerLogin: async () => {
+      throw new ApiError(404, 'Reviewer sign-in is off.')
+    },
     loginUrl: () => '/',
 
     // A made-up pull request that changes the sample's answered items.

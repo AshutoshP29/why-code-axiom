@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { useState, type FormEvent, type ReactNode } from 'react'
 import { useLocation } from 'react-router'
 import { useApi } from '../api/context'
 import { useMe } from '../api/queries'
-import { Card, ErrorNotice, Loading } from './ui'
+import { Button, Card, ErrorNotice, Loading } from './ui'
 
 /** Shows the screens only to a signed-in user when the API has sign-in on; sample data skips it. */
 export function AuthGate({ children }: { children: ReactNode }) {
@@ -38,7 +39,76 @@ function SignIn() {
         >
           Sign in with GitHub
         </a>
+        <ReviewerSignIn />
       </Card>
     </main>
+  )
+}
+
+const FIELD =
+  'w-full rounded-lg border border-line-strong bg-sunken px-3 py-2 text-sm placeholder:text-faint focus:border-teal focus:outline-none'
+
+/** For evaluators and test tools that cannot sign in through GitHub. */
+function ReviewerSignIn() {
+  const { api } = useApi()
+  const queryClient = useQueryClient()
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  async function submit(e: FormEvent) {
+    e.preventDefault()
+    setBusy(true)
+    setError(null)
+    try {
+      await api.reviewerLogin(username.trim(), password)
+      await queryClient.invalidateQueries({ queryKey: ['me'] })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Sign-in failed.')
+      setBusy(false)
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-6 border-t border-line pt-5 text-left" aria-labelledby="reviewer-heading">
+      <h2 id="reviewer-heading" className="text-sm font-semibold">
+        Reviewer account
+      </h2>
+      <p className="mt-1 text-xs text-faint">For evaluators given a WhyCode username and password.</p>
+      <label htmlFor="reviewer-username" className="mt-3 block text-xs text-muted">
+        Username
+      </label>
+      <input
+        id="reviewer-username"
+        name="username"
+        autoComplete="username"
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        className={FIELD}
+        required
+      />
+      <label htmlFor="reviewer-password" className="mt-3 block text-xs text-muted">
+        Password
+      </label>
+      <input
+        id="reviewer-password"
+        name="password"
+        type="password"
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        className={FIELD}
+        required
+      />
+      {error && (
+        <p role="alert" className="mt-3 text-xs text-red">
+          {error}
+        </p>
+      )}
+      <Button type="submit" className="mt-4 w-full" disabled={busy || !username.trim() || !password}>
+        {busy ? 'Signing in…' : 'Sign in'}
+      </Button>
+    </form>
   )
 }
