@@ -286,7 +286,7 @@ class PgAttempts:
     """Failures shared by every API instance, in Postgres table login_failures."""
 
     def __init__(self, conn):
-        self.conn = conn
+        self.conn = conn  # anything with execute(sql, params): a GapStore, which reconnects
         conn.execute(ATTEMPTS_DDL)
 
     def failures(self, client: str, seconds: int) -> tuple[int, int]:

@@ -70,7 +70,7 @@ def get_attempts():
         store = _gap_store()
     except (psycopg.Error, ConfigError):
         return auth.get_attempts()
-    return auth.PgAttempts(store.conn)
+    return auth.PgAttempts(store)  # through the store, so it reconnects too
 
 
 def get_gaps() -> GapStore:

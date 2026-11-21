@@ -327,3 +327,24 @@ def test_lifespan_closes_the_gap_store(monkeypatch):
     with TestClient(app_module.create_app()):
         pass
     assert closed == [True]
+
+
+class DroppingConn(FakeConn):
+    """A connection the server closed while idle: the first statement fails."""
+
+    def execute(self, sql, params=()):
+        raise psycopg.OperationalError("server closed the connection unexpectedly")
+
+
+def test_gap_store_reconnects_when_the_idle_connection_was_closed(monkeypatch):
+    fresh = FakeConn(rows=[(FN, 1, "q", FLAGGED)])
+    opened = []
+    monkeypatch.setattr(GapStore, "_open", staticmethod(lambda dsn: opened.append(dsn) or fresh))
+    store = GapStore(DroppingConn(), "postgresql://x")
+    assert store.summaries(REPO) == [GapSummary(FN, 1, "q", FLAGGED)]
+    assert opened == ["postgresql://x"] and store.conn is fresh
+
+
+def test_gap_store_without_a_dsn_does_not_hide_the_error():
+    with pytest.raises(psycopg.OperationalError):
+        GapStore(DroppingConn()).summaries(REPO)
