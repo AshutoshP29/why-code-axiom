@@ -318,3 +318,35 @@ class GapRequest(BaseModel):
     repo: str
     entity_id: str
     question: str = Field(min_length=1, max_length=2000)
+
+
+class GuardRequest(BaseModel):
+    repo: str
+    pull: str = Field(min_length=1, max_length=300)  # "6710", "#6710" or the PR's GitHub link
+
+
+class GuardPull(BaseModel):
+    number: int
+    title: str
+    url: str
+    state: Literal["open", "closed", "merged"]
+    author: str | None
+    opened_at: datetime
+
+
+class GuardHit(BaseModel):
+    decision: Decision
+    evidence: list[EvidenceStep]
+    people: list[Person]
+    touched: list[Entity]  # what the PR changes that this decision governs
+    level: Literal["code", "file"]  # code: a function, class or config key; file: only its file
+
+
+class GuardReport(BaseModel):
+    repo: str
+    pull: GuardPull
+    files_changed: int
+    python_files_read: int
+    changed: list[Entity]
+    hits: list[GuardHit]
+    notes: list[str]

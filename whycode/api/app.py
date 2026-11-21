@@ -13,13 +13,14 @@ from datetime import date
 from functools import lru_cache
 from typing import Annotated
 
+import httpx
 import psycopg
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
-from whycode.api import answers, auth, lineage, reads
+from whycode.api import answers, auth, guard, lineage, reads
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -176,6 +177,17 @@ def get_health(
 def get_evaluation(run: RunDep, repo: RepoDep):
     found = require_repo(run, repo)
     return reads.evaluation(found.id)
+
+
+@router.post("/guard", response_model=m.GuardReport)
+def check_pull(
+    run: RunDep,
+    body: m.GuardRequest,
+    client: Annotated[httpx.Client, Depends(guard.http_client)],
+):
+    repo = require_repo(run, _normalize(body.repo))
+    with client:
+        return guard.check(run, repo, body.pull, guard.GitHubReader(client, guard._token()))
 
 
 @router.post("/gaps", response_model=m.Gap)
