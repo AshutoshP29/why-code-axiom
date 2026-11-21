@@ -66,7 +66,7 @@ export function IngestionView({ repoId }: { repoId: string }) {
         </ol>
 
         <p className="mt-4 rounded-lg border border-amber/30 bg-amber/10 px-3 py-2 text-xs text-muted">
-          Partial history: answers may miss older decisions and will show a lower confidence.
+          Partial history: answers may miss older decisions.
         </p>
 
         <div className="mt-5 flex flex-wrap items-center gap-2">
