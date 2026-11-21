@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 from starlette.concurrency import run_in_threadpool
 
-from whycode.api import answers, auth, guard, limits, lineage, reads, repos
+from whycode.api import answers, auth, guard, limits, lineage, reads, repos, risk
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -205,6 +205,12 @@ def get_health(
 ):
     found = require_repo(run, repo)
     return reads.health(run, found, gap_queue(run, gaps, repo))
+
+
+@router.get("/risk", response_model=m.KnowledgeRisk)
+def get_risk(run: RunDep, repo: RepoDep):
+    require_repo(run, repo)
+    return risk.knowledge_risk(run, repo)
 
 
 @router.get("/evaluation", response_model=m.Evaluation)
