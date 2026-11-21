@@ -157,7 +157,7 @@ export function RefusalView({ answer, repoId, asked }: { answer: RefusedAnswer; 
         </div>
       </article>
 
-      <aside className="space-y-7 border-t border-line bg-chrome p-4 lg:border-t-0 lg:border-l">
+      <aside aria-label="Answer details" className="space-y-7 border-t border-line bg-chrome p-4 lg:border-t-0 lg:border-l">
         {entity && (
           <section>
             <SectionLabel>Last owner of this code</SectionLabel>
