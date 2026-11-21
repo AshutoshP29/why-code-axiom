@@ -1,6 +1,6 @@
 import { Link, NavLink } from 'react-router'
 import { useApi } from '../api/context'
-import { useEntity, useSyncRepo } from '../api/queries'
+import { useEntity, useMe, useSyncRepo } from '../api/queries'
 import type { EntityKind, Repo } from '../api/types'
 import { INGEST_ACTIONS } from '../lib/features'
 import { formatRelative } from '../lib/format'
@@ -111,6 +111,25 @@ function SyncChip({ repo }: { repo: Repo }) {
   )
 }
 
+function UserChip() {
+  const { api, sample } = useApi()
+  const user = useMe(!sample).data?.user
+  if (!user) return null
+  async function signOut() {
+    await api.logout()
+    window.location.assign('/')
+  }
+  return (
+    <div className="flex items-center gap-2 text-xs">
+      {user.avatar_url && <img src={user.avatar_url} alt="" className="size-7 rounded-full border border-line" />}
+      <span className="hidden text-muted lg:inline">{user.login}</span>
+      <button type="button" onClick={signOut} className="font-semibold text-muted hover:text-ink hover:underline">
+        Sign out
+      </button>
+    </div>
+  )
+}
+
 export function TopBar({ ask }: { ask: TopBarAsk | null }) {
   const { repo } = useRepo()
   const { sample } = useApi()
@@ -126,6 +145,7 @@ export function TopBar({ ask }: { ask: TopBarAsk | null }) {
             Sample data
           </Badge>
         )}
+        <UserChip />
       </div>
     </header>
   )

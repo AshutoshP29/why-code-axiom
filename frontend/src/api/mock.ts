@@ -384,5 +384,10 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
       }
       return copy(gap)
     },
+
+    // Sample data has no accounts: sign-in is off.
+    getMe: async () => ({ enabled: false, user: null }),
+    logout: async () => {},
+    loginUrl: () => '/',
   }
 }

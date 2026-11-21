@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { useState, type ReactNode } from 'react'
 import { Route, Routes } from 'react-router'
 import { ApiContext, type ApiContextValue } from './api/context'
+import { AuthGate } from './components/AuthGate'
 import { Layout } from './components/Layout'
 import { EvaluationPage } from './pages/EvaluationPage'
 import { ExplorePage } from './pages/ExplorePage'
@@ -29,7 +30,9 @@ export function AppProviders({
   return (
     <QueryClientProvider client={client}>
       <ApiContext value={api}>
-        <RepoProvider>{children}</RepoProvider>
+        <AuthGate>
+          <RepoProvider>{children}</RepoProvider>
+        </AuthGate>
       </ApiContext>
     </QueryClientProvider>
   )

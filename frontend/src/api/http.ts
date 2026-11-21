@@ -11,6 +11,7 @@ import type {
   Overview,
   Repo,
   RepoCheck,
+  Session,
   WhyCodeApi,
 } from './types'
 
@@ -49,7 +50,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
       throw new ApiError(0, 'Could not reach the WhyCode API. Check that the backend is running.')
     }
     if (!res.ok) throw new ApiError(res.status, await errorMessage(res))
-    return (await res.json()) as T
+    return (res.status === 204 ? undefined : await res.json()) as T
   }
 
   const get = <T>(path: string, params: Params = {}) => request<T>('GET', path, params)
@@ -75,6 +76,9 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     reingest: (repo) => post<Repo>('/repos/reingest', { repo }),
     flagGap: (repo, entityId, question) =>
       post<Gap>('/gaps', { repo, entity_id: entityId, question }),
+    getMe: () => get<Session>('/auth/me'),
+    logout: () => post<undefined>('/auth/logout', {}),
+    loginUrl: (next) => `${base}/auth/login?${new URLSearchParams({ next })}`,
   }
 }
 

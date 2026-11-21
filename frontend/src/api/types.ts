@@ -358,4 +358,20 @@ export interface WhyCodeApi {
   getEvaluation(repo: string): Promise<Evaluation>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
+  /** Whether sign-in is on, and who is signed in. */
+  getMe(): Promise<Session>
+  logout(): Promise<void>
+  /** Where "Sign in with GitHub" goes; `next` is the page to come back to. */
+  loginUrl(next: string): string
+}
+
+export interface User {
+  login: string
+  name: string | null
+  avatar_url: string | null
+}
+
+export interface Session {
+  enabled: boolean // false: this API has sign-in off and every screen is open
+  user: User | null
 }

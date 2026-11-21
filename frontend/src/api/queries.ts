@@ -155,3 +155,14 @@ export function useFlagGap(repo: string | null) {
     onSuccess: () => client.invalidateQueries({ queryKey: ['health', repo] }),
   })
 }
+
+/** Sign-in state. Not asked for on sample data, which has no accounts. */
+export function useMe(enabled: boolean) {
+  const { api } = useApi()
+  return useQuery({
+    queryKey: ['me'],
+    queryFn: enabled ? () => api.getMe() : skipToken,
+    retry: false,
+    staleTime: Infinity,
+  })
+}
