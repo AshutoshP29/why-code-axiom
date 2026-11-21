@@ -94,6 +94,15 @@ export function useHealth(repo: string | null) {
   })
 }
 
+/** Knowledge risk for leads: it changes only when the graph is read again. */
+export function useRisk(repo: string | null) {
+  const { api } = useApi()
+  return useQuery({
+    queryKey: ['risk', repo],
+    queryFn: repo ? () => api.getRisk(repo) : skipToken,
+  })
+}
+
 export function useEvaluation(repo: string | null) {
   const { api } = useApi()
   return useQuery({

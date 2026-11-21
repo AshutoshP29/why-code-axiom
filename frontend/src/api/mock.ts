@@ -16,6 +16,7 @@ import {
   LINEAGES,
   noMatchRefusal,
   OVERVIEW,
+  RISK,
   SAMPLE_REPO,
   sampleRepos,
   sampleStages,
@@ -355,6 +356,17 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
     async getHealth(repoId) {
       await wait()
       return copy(healthFor(findRepo(repoId)))
+    },
+
+    // Only the sample repo has decisions and people, so only it can have knowledge risk.
+    async getRisk(repoId) {
+      await wait()
+      const repo = findRepo(repoId)
+      if (repo.id !== SAMPLE_REPO) {
+        const counts = { code_with_decisions: 0, orphaned: 0, changed_without_reason: 0 }
+        return { orphaned: [], unexplained: [], counts }
+      }
+      return copy(RISK)
     },
 
     async getEvaluation(repoId) {
