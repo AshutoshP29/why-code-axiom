@@ -343,6 +343,32 @@ class Health(BaseModel):
     evaluation: EvaluationSummary
 
 
+class OrphanedCode(BaseModel):
+    entity: Entity
+    decisions: int  # decisions in force on it
+    people: list[Person]  # everyone who proposed or approved them; all inactive
+    last_decided_at: datetime
+
+
+class UnexplainedCode(BaseModel):
+    entity: Entity
+    commits: int
+    authors: int  # distinct commit authors
+    last_changed_at: datetime | None
+
+
+class RiskCounts(BaseModel):
+    code_with_decisions: int
+    orphaned: int
+    changed_without_reason: int
+
+
+class KnowledgeRisk(BaseModel):
+    orphaned: list[OrphanedCode]
+    unexplained: list[UnexplainedCode]
+    counts: RiskCounts
+
+
 class AskRequest(BaseModel):
     repo: str
     entity_id: str | None

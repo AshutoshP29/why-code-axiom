@@ -53,6 +53,9 @@ MODELS: dict[str, type[BaseModel]] = {
     "EvalRow": m.EvalRow,
     "EvaluationSummary": m.EvaluationSummary,
     "Health": m.Health,
+    "OrphanedCode": m.OrphanedCode,
+    "UnexplainedCode": m.UnexplainedCode,
+    "KnowledgeRisk": m.KnowledgeRisk,
     "User": User,
     "Session": Session,
     "GuardPull": m.GuardPull,
@@ -62,6 +65,7 @@ MODELS: dict[str, type[BaseModel]] = {
 INLINE = {
     ("Overview", "counts"): m.OverviewCounts,
     ("Health", "counts"): m.HealthCounts,
+    ("KnowledgeRisk", "counts"): m.RiskCounts,
     ("AnsweredAnswer", "graph"): m.AnswerGraph,
 }
 

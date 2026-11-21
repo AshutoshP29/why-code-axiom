@@ -342,6 +342,32 @@ export interface Health {
   evaluation: EvaluationSummary
 }
 
+/** Code whose decisions are all in force but whose deciders have all left. */
+export interface OrphanedCode {
+  entity: Entity
+  decisions: number // decisions in force on it
+  people: Person[] // everyone who proposed or approved them; all inactive
+  last_decided_at: string
+}
+
+/** Code commits keep changing that no decision explains. */
+export interface UnexplainedCode {
+  entity: Entity
+  commits: number
+  authors: number // distinct commit authors
+  last_changed_at: string | null
+}
+
+export interface KnowledgeRisk {
+  orphaned: OrphanedCode[] // most decisions first, then most recent decision
+  unexplained: UnexplainedCode[] // most commits first
+  counts: {
+    code_with_decisions: number
+    orphaned: number
+    changed_without_reason: number
+  }
+}
+
 export interface WhyCodeApi {
   listRepos(): Promise<Repo[]>
   checkRepo(input: string): Promise<RepoCheck>
@@ -356,6 +382,8 @@ export interface WhyCodeApi {
   ask(repo: string, entityId: string | null, question: string): Promise<Answer>
   getLineage(repo: string, entityId: string, asOf: string | null): Promise<Lineage>
   getHealth(repo: string): Promise<Health>
+  /** Knowledge risk: code nobody active can explain, and code nobody explained at all. */
+  getRisk(repo: string): Promise<KnowledgeRisk>
   getEvaluation(repo: string): Promise<Evaluation>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
