@@ -65,6 +65,15 @@ def _gap_store() -> GapStore:
     return GapStore.connect(dsn)
 
 
+def get_attempts():
+    """Sign-in failures in Postgres, shared by every instance; in memory if it is down."""
+    try:
+        store = _gap_store()
+    except (psycopg.Error, ConfigError):
+        return auth.get_attempts()
+    return auth.PgAttempts(store.conn)
+
+
 def get_gaps() -> GapStore:
     return _gap_store()
 
@@ -286,6 +295,7 @@ def create_app() -> FastAPI:
     async def _config(_request: Request, exc: ConfigError):
         return JSONResponse({"detail": str(exc)}, status_code=503)  # names only, never values
 
+    app.dependency_overrides[auth.get_attempts] = get_attempts
     app.include_router(auth.router)
     app.include_router(ops)
     app.include_router(router)
