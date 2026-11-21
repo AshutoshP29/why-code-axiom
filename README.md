@@ -209,9 +209,10 @@ by hand above:
 `/repos/sync` and `/repos/reingest` start the same run again: PRs already in the graph are
 skipped, so only new ones are read. Repos added with "keep it up to date" are run once a day by
 the same workflow's schedule. The API refuses private repos, a second repo while one is being read
-(a run quiet for 2 hours stops counting), more than 5 new repos a day, repos with no discussed PRs,
-and repos too big for the free Aura graph. Repos the team read by hand, such as psf/requests, are
-never re-run from the screens.
+(a run quiet for 2 hours stops counting), more than 5 new repos a day and repos too big for the
+free Aura graph. A repo with no discussed PR yet is read for its code and commits only (0 AI
+calls). Only the logins in `WHYCODE_ADDERS` may add, sync or re-run (unset: anyone signed in).
+Repos the team read by hand, such as psf/requests, are never re-run from the screens.
 
 Setup, once, by the repository owner:
 
@@ -224,6 +225,24 @@ Setup, once, by the repository owner:
 
 GitHub only starts `workflow_dispatch` runs of a workflow that is on the default branch, so the
 flow works once `ingest.yml` is merged into main.
+
+### Live sync from pushes
+
+A repository added from the screens can be kept in sync push by push, without waiting for a run.
+Add a webhook to it (Settings, Webhooks): payload URL
+`https://whycode-api.vercel.app/api/hooks/github`, content type `application/json`, the secret in
+`WHYCODE_WEBHOOK_SECRET` (also set on the API's Vercel project), events "Pushes" and "Pull
+requests". Then, within seconds of each push to the default branch, `whycode/ingest/live.py` writes
+the commit, its author, MODIFIES to the files and to the functions, classes and config keys the
+diff changed, and any new code items. No AI call. A merged pull request restarts the ingestion run,
+which reads its decisions (it reads merged PRs with 5 or more comments). The demo repository
+`AshutoshP29/whycode-demo` is set up this way.
+
+### Limits
+
+PR Guard allows 20 checks per user and 80 overall an hour (it spends the server's GitHub token);
+asking allows 60 questions per user a minute. Over that the API answers 429. Calls are counted in
+Postgres table `api_calls`, shared by every API instance.
 
 ## Tests
 
