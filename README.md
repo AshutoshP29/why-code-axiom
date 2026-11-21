@@ -187,7 +187,40 @@ the question names code (`rebuild_method`, `Response.json`, `JSONDecodeError`), 
 name is used even if a plain word in the question ("post", "get") scores higher. Flagged gaps go
 to the Postgres table `gaps`. `/evaluation` (and the panel on `/health`) serves the last results
 of `scripts/evaluate.py` from `docs/evaluation.json`, or placeholders for a repo never measured.
-`/repos/check`, `POST /repos`, `/repos/sync`, `/repos/reingest` and `/ingestion` return 501 for now.
+
+## Adding any public repository
+
+The screens' Add repository dialog works on any public GitHub repository, not only the ones read
+by hand above:
+
+1. `POST /api/repos/check` reads the repository's size from GitHub and estimates the run (PRs
+   read, AI calls, minutes, room in the free graph). No AI calls.
+2. `POST /api/repos` queues it on a new Repo node and starts the GitHub Actions workflow
+   `.github/workflows/ingest.yml` (a run is too long for a Vercel function, and needs git).
+3. The workflow runs `python -m whycode.ingest.repo --repo owner/name`: the 20 most-discussed merged
+   PRs with 5 or more comments, the code map with 3 years of history, extraction, and
+   supersession when decisions were added, at most 60 AI calls. Each stage is recorded on the
+   Repo node.
+4. `GET /api/ingestion` shows those stages on the "Reading owner/name" screen until it is READY.
+
+`/repos/sync` and `/repos/reingest` start the same run again: PRs already in the graph are
+skipped, so only new ones are read. Repos added with "keep it up to date" are run once a day by
+the same workflow's schedule. The API refuses private repos, a second repo while one is being read
+(a run quiet for 2 hours stops counting), more than 5 new repos a day, repos with no discussed PRs,
+and repos too big for the free Aura graph. Repos the team read by hand, such as psf/requests, are
+never re-run from the screens.
+
+Setup, once, by the repository owner:
+
+- Actions secrets: `NEO4J_URI`, `NEO4J_USERNAME`, `NEO4J_PASSWORD`, `NEO4J_DATABASE`,
+  `GEMINI_API_KEY`, `GROQ_API_KEY`; optional `INGEST_GITHUB_TOKEN` (otherwise the job's own token,
+  1,000 GitHub requests an hour). Actions variables: `GEMINI_MODEL`, `GROQ_MODEL`.
+- On the API's Vercel project: `WHYCODE_DISPATCH_TOKEN`, a fine-grained token for this repository
+  with Actions read and write only (optionally `WHYCODE_DISPATCH_REPO`, `WHYCODE_DISPATCH_REF`).
+- On the screens' Vercel project: remove `VITE_INGEST_ACTIONS=off`, so the buttons show.
+
+GitHub only starts `workflow_dispatch` runs of a workflow that is on the default branch, so the
+flow works once `ingest.yml` is merged into main.
 
 ## Tests
 

@@ -1,0 +1,85 @@
+# Reads a repository into the WhyCode graph. Started by POST /api/repos (Add repository on the
+# screens) with the repo as input, and once a day for the repos added with "keep it up to date".
+# Runs whycode.ingest.repo, which records each stage on the Repo node for the progress screen.
+#
+# Needs these Actions secrets: NEO4J_URI, NEO4J_USERNAME, NEO4J_PASSWORD, NEO4J_DATABASE,
+# GEMINI_API_KEY, GROQ_API_KEY; optional INGEST_GITHUB_TOKEN (more GitHub requests per hour than
+# the job's own token). And these Actions variables: GEMINI_MODEL, GROQ_MODEL.
+name: Ingest a repository
+
+on:
+  workflow_dispatch:
+    inputs:
+      repo:
+        description: owner/name of a public GitHub repository
+        required: true
+        type: string
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+# One run at a time: runs share the AI budget and the free graph. The API refuses a new repo while
+# one is being read, so no queued run is ever replaced.
+concurrency:
+  group: ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    services:
+      postgres: # raw GitHub cache, job list and AI answer cache for this run only
+        image: postgres:16
+        env:
+          POSTGRES_USER: whycode
+          POSTGRES_PASSWORD: whycode
+          POSTGRES_DB: whycode
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U whycode"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      # The input reaches the shell only through this variable, never pasted into a script.
+      REPO: ${{ inputs.repo }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      POSTGRES_DSN: postgresql://whycode:whycode@localhost:5432/whycode
+      GITHUB_TOKEN: ${{ secrets.INGEST_GITHUB_TOKEN || github.token }}
+      NEO4J_URI: ${{ secrets.NEO4J_URI }}
+      NEO4J_USERNAME: ${{ secrets.NEO4J_USERNAME }}
+      NEO4J_PASSWORD: ${{ secrets.NEO4J_PASSWORD }}
+      NEO4J_DATABASE: ${{ secrets.NEO4J_DATABASE }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL }}
+      GROQ_MODEL: ${{ vars.GROQ_MODEL }}
+      LLM_PROVIDERS: gemini,groq
+      LLM_MAX_CALLS: "60"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: astral-sh/setup-uv@v10.3.3 # an exact version: since v8 there are no @v10-style tags
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: uv sync --locked --no-dev --python 3.12
+
+      - name: Ingest the repository
+        if: github.event_name == 'workflow_dispatch'
+        run: uv run --no-sync python -m whycode.ingest.repo --repo "$REPO"
+
+      - name: Ingest the repositories kept up to date
+        if: github.event_name == 'schedule'
+        run: uv run --no-sync python -m whycode.ingest.repo --due
+
+      - name: Record the failure on the repository
+        if: failure() && github.event_name == 'workflow_dispatch'
+        run: >-
+          uv run --no-sync python -m whycode.ingest.repo --repo "$REPO"
+          --failed "The ingestion run stopped before it finished: $RUN_URL"

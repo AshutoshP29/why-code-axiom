@@ -175,22 +175,6 @@ def test_scale_is_monotonic_and_bounded():
     assert 0 < reads.scale(0.1) < reads.scale(5) < reads.scale(50) <= 1
 
 
-@pytest.mark.parametrize(
-    ("method", "path"),
-    [
-        ("post", "/api/repos/check"),
-        ("post", "/api/repos"),
-        ("post", "/api/repos/sync"),
-        ("post", "/api/repos/reingest"),
-        ("get", "/api/ingestion"),
-    ],
-)
-def test_not_implemented_stubs(method, path):
-    res = getattr(client(FakeGraph()), method)(path, params={"repo": REPO})
-    assert res.status_code == 501
-    assert res.json() == {"detail": "not implemented yet"}
-
-
 def test_cors_allows_the_dev_server():
     res = client(FakeGraph()).get("/api/repos", headers={"Origin": "http://localhost:5173"})
     assert res.headers["access-control-allow-origin"] == "http://localhost:5173"

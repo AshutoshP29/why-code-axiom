@@ -323,8 +323,9 @@ def stages(r: m.Repo, headlines: dict[str, str]) -> list[m.StageProgress]:
     return out
 
 
-def health(run: Run, r: m.Repo, gap_queue: list[m.Gap]) -> m.Health:
-    params = {"repo": r.id}
+def _counts(run: Run, repo_id: str) -> tuple[m.HealthCounts, dict[str, str]]:
+    """What the graph holds for a repo, and each stage's headline from it ("1,236 PRs")."""
+    params = {"repo": repo_id}
     by_label = {row["label"]: row["n"] for row in run(Q_HEALTH_COUNTS, params)}
     links = run(Q_HEALTH_LINKS, params)[0]
     entities = sum(by_label.get(label, 0) for label in ("File", "Class", "Function", "ConfigKey"))
@@ -343,6 +344,16 @@ def health(run: Run, r: m.Repo, gap_queue: list[m.Gap]) -> m.Health:
         "extract": f"{counts.decisions:,} decisions",
         "supersession": f"{links['superseded']:,} found",
     }
+    return counts, headlines
+
+
+def ingestion(run: Run, r: m.Repo) -> m.Ingestion:
+    """The "Reading owner/name" screen: the repo and its five stages."""
+    return m.Ingestion(repo=r, stages=stages(r, _counts(run, r.id)[1]))
+
+
+def health(run: Run, r: m.Repo, gap_queue: list[m.Gap]) -> m.Health:
+    counts, headlines = _counts(run, r.id)
     return m.Health(
         last_ingest_at=r.last_synced_at,
         stages=stages(r, headlines),

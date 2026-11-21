@@ -22,6 +22,8 @@ ADDED = {
 MODELS: dict[str, type[BaseModel]] = {
     "Repo": m.Repo,
     "StageProgress": m.StageProgress,
+    "RepoCheck": m.RepoCheck,
+    "Ingestion": m.Ingestion,
     "Entity": m.Entity,
     "EntityMatch": m.EntityMatch,
     "ExplorerItem": m.ExplorerItem,

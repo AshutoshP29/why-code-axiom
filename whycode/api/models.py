@@ -45,6 +45,40 @@ class StageProgress(BaseModel):
     detail: str
 
 
+class Ingestion(BaseModel):
+    repo: Repo
+    stages: list[StageProgress]
+
+
+class RepoCheckRequest(BaseModel):
+    input: str = Field(min_length=1, max_length=300)  # a GitHub link or owner/name
+
+
+class RepoCheck(BaseModel):
+    """What the Add repository dialog shows before anything is read."""
+
+    repo: str
+    found: bool  # a public repository was found
+    is_public: bool
+    commits: int
+    pull_requests: int
+    issues: int
+    minutes_low: int
+    minutes_high: int
+    ai_calls: int
+    fits_free_tier: bool
+    capped: bool  # only the most-discussed PRs are read
+
+
+class AddRepoRequest(BaseModel):
+    repo: str = Field(min_length=1, max_length=300)
+    keep_updated: bool = False  # read new pull requests once a day
+
+
+class RepoRequest(BaseModel):
+    repo: str = Field(min_length=1, max_length=300)
+
+
 class Entity(BaseModel):
     id: str
     kind: EntityKind
