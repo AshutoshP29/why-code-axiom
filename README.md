@@ -192,8 +192,9 @@ to the Postgres table `gaps`. `/evaluation` (and the panel on `/health`) serves 
 of `scripts/evaluate.py` from `docs/evaluation.json`, or placeholders for a repo never measured.
 
 `/risk` (the Knowledge risk screen) is for engineering leads: code whose decisions are still in
-force but whose every proposer and approver has gone inactive, and code that commits keep changing
-with no decision at all. Graph reads only, no LLM.
+force but whose every proposer and approver has gone quiet (no pull request activity and no commits
+for about 18 months), and code that commits keep changing with no decision at all. Graph reads only,
+no LLM.
 
 ## Adding any public repository
 

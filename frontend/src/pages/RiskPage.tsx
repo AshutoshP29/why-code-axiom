@@ -162,7 +162,8 @@ export function RiskPage() {
         </div>
         <p className="mt-2 text-xs text-faint">
           The decision is recorded and still in force, but everyone who proposed or approved it has
-          gone quiet in this repository. Read the decision before changing the code.
+          gone quiet in this repository: no pull request activity and no commits for about 18
+          months. Read the decision before changing the code.
         </p>
         <div className="mt-1 overflow-x-auto">
           <OrphanedTable rows={data.orphaned} />

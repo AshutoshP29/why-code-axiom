@@ -10,7 +10,7 @@ Two readings of the graph, both read-only and both repo-scoped (schema rule 3):
 Each query starts with a "// q:<name>" comment, as the other reads do.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from whycode.api import models as m
 from whycode.api import reads
@@ -25,10 +25,16 @@ _CODE = "(e:Function OR e:Class OR e:ConfigKey)"
 _IN_FORCE = (
     "NOT EXISTS { MATCH (d)<-[s:SUPERSEDES]-(:Decision) WHERE s.kind IN ['reverses', 'replaces'] }"
 )
-# Nobody active decided it. Collected per entity, so one active person anywhere clears it.
+# The same window as `active` (whycode.graph.build.ACTIVE_WITHIN, about 18 months); a unit test
+# keeps the two equal. Not imported: build pulls in the whole extraction pipeline.
+ACTIVE_WITHIN = timedelta(days=548)
+# Nobody around decided it. Collected per entity, so one person around anywhere clears it.
+# `active` only reflects the pull requests that were read, so a maintainer last seen in an old PR
+# looks gone; a commit they authored within the same window ($since) counts as being around too.
 _ALL_GONE = (
     "size(proposers + approvers) > 0 "
-    "AND all(p IN proposers + approvers WHERE coalesce(p.active, false) = false)"
+    "AND all(p IN proposers + approvers WHERE coalesce(p.active, false) = false "
+    "AND NOT EXISTS { MATCH (p)-[:AUTHORED]->(c:Commit {repo: $repo}) WHERE c.date >= $since })"
 )
 _ORPHANED_MATCH = f"""
 MATCH (e {{repo: $repo}})<-[:AFFECTS]-(d:Decision {{repo: $repo}})
@@ -113,12 +119,13 @@ def _unexplained(row: dict) -> m.UnexplainedCode:
     )
 
 
-def knowledge_risk(run: Run, repo: str) -> m.KnowledgeRisk:
+def knowledge_risk(run: Run, repo: str, now: datetime | None = None) -> m.KnowledgeRisk:
+    since = (now or datetime.now(UTC)) - ACTIVE_WITHIN  # a commit after this: still around
     params = {"repo": repo, "limit": TOP}
-    orphaned = [_orphaned(r) for r in run(Q_ORPHANED, params)]
+    orphaned = [_orphaned(r) for r in run(Q_ORPHANED, {**params, "since": since})]
     unexplained = [_unexplained(r) for r in run(Q_UNEXPLAINED, params)]
     counts = run(Q_COUNTS, {"repo": repo})[0]
-    orphaned_rows = run(Q_ORPHANED_COUNT, {"repo": repo})
+    orphaned_rows = run(Q_ORPHANED_COUNT, {"repo": repo, "since": since})
     return m.KnowledgeRisk(
         orphaned=orphaned,
         unexplained=unexplained,

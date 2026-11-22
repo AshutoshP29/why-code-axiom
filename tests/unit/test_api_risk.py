@@ -105,6 +105,26 @@ def test_the_in_force_rule_and_the_all_inactive_rule_are_in_the_cypher():
     assert "LIMIT" not in risk.Q_COUNTS and "LIMIT" not in risk.Q_ORPHANED_COUNT
 
 
+def test_a_recent_commit_counts_as_still_around():
+    # psf/requests: the current maintainer was last seen in a 2016 PR, so `active` is false, but
+    # he committed in 2026. A commit within the `active` window keeps a person off the orphan list.
+    assert "-[:AUTHORED]->(c:Commit {repo: $repo}) WHERE c.date >= $since" in risk.Q_ORPHANED
+    assert "$since" in risk.Q_ORPHANED_COUNT  # the count follows the same rule
+    now = datetime(2026, 11, 22, tzinfo=UTC)
+    g = graph()
+    risk.knowledge_risk(g, REPO, now=now)
+    for cypher, params in g.calls:
+        if "// q:risk_orphaned" in cypher:
+            assert params["since"] == now - risk.ACTIVE_WITHIN
+            assert params["since"].date().isoformat() == "2025-05-23"  # about 18 months back
+
+
+def test_the_window_is_the_one_that_sets_active():
+    from whycode.graph.build import ACTIVE_WITHIN
+
+    assert risk.ACTIVE_WITHIN == ACTIVE_WITHIN
+
+
 def test_rows_keep_the_order_the_graph_sorted_them_in():
     rows = [orphan(CFG, 4, DECIDED), orphan(CLS, 2, CHANGED), orphan(FN, 2, DECIDED)]
     body = get(graph(orphaned=rows)).json()

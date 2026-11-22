@@ -87,6 +87,23 @@ MERGE (c1)-[:MODIFIES]->(k)
 MERGE (gone)-[:AUTHORED]->(c1)
 MERGE (here)-[:AUTHORED]->(c2)
 MERGE (here)-[:AUTHORED]->(c3)
+
+// not orphaned: its only decider looks gone (last seen in an old PR) but committed a month ago,
+// like psf/requests' current maintainer
+MERGE (keeper:Person {id: $repo + '#person:keeper'})
+  SET keeper.repo = $repo, keeper.login = 'keeper', keeper.active = false,
+      keeper.last_seen = datetime('2016-01-01T00:00:00Z')
+MERGE (e:Function {id: $repo + '#fn:pkg/e.py::epsilon'})
+  SET e.repo = $repo, e.name = 'epsilon', e.qualified_name = 'epsilon', e.path = 'pkg/e.py'
+MERGE (d6:Decision {id: $repo + '#dec:6'})
+  SET d6.repo = $repo, d6.summary = 'Epsilon', d6.rationale = 'r',
+      d6.decided_at = datetime('2016-01-01T00:00:00Z'), d6.status = 'ACTIVE'
+MERGE (d6)-[:AFFECTS]->(e)
+MERGE (d6)-[:PROPOSED_BY]->(keeper)
+MERGE (c4:Commit {id: $repo + '#commit:c4'})
+  SET c4.repo = $repo, c4.sha = 'c4', c4.date = datetime() - duration({days: 30})
+MERGE (c4)-[:MODIFIES]->(e)
+MERGE (keeper)-[:AUTHORED]->(c4)
 """
 
 
@@ -115,6 +132,18 @@ def test_only_code_nobody_active_decided_is_orphaned(run):
     assert alpha.people[1].role == "Approved it"
 
 
+def test_a_decider_who_committed_recently_is_still_around(run):
+    # keeper's `active` is false (last seen in a 2016 PR), but a commit a month ago counts.
+    ids = [o.entity.id for o in risk.knowledge_risk(run, REPO).orphaned]
+    assert f"{REPO}#fn:pkg/e.py::epsilon" not in ids
+    # Long enough ago, the same commit no longer counts and epsilon is orphaned.
+    from datetime import UTC, datetime, timedelta
+
+    later = datetime.now(UTC) + timedelta(days=600)
+    ids = [o.entity.id for o in risk.knowledge_risk(run, REPO, now=later).orphaned]
+    assert f"{REPO}#fn:pkg/e.py::epsilon" in ids
+
+
 def test_code_that_commits_change_without_a_decision(run):
     report = risk.knowledge_risk(run, REPO)
     rows = {u.entity.id: u for u in report.unexplained}
@@ -127,8 +156,8 @@ def test_code_that_commits_change_without_a_decision(run):
 
 def test_counts_cover_the_whole_repo(run):
     counts = risk.knowledge_risk(run, REPO).counts
-    assert counts.code_with_decisions == 3  # alpha, beta, Gamma
-    assert counts.orphaned == 1
+    assert counts.code_with_decisions == 4  # alpha, beta, Gamma, epsilon
+    assert counts.orphaned == 1  # alpha: epsilon's decider committed recently
     assert counts.changed_without_reason == 2  # delta and TIMEOUT
 
 
