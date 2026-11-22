@@ -30,6 +30,7 @@ const PAGES: { name: string; path: string; loaded: string }[] = [
   { name: 'Plain question, no match', path: why(null, 'why did requests drop python 2 support?'), loaded: 'What the graph does know' },
   { name: 'Decision lineage', path: lineage(ID.maxRetries), loaded: 'Commits that touched this key' },
   { name: 'Graph health', path: '/health', loaded: 'Graph contents' },
+  { name: 'Knowledge risk', path: '/risk', loaded: 'Nobody left to ask' },
   { name: 'Evaluation', path: '/evaluation', loaded: 'How a response is scored' },
   { name: 'Explore', path: '/explore', loaded: 'src/requests/adapters.py' },
   { name: 'Not found', path: '/nope', loaded: 'This page does not exist' },

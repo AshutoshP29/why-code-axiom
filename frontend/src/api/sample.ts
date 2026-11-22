@@ -20,6 +20,7 @@ import type {
   HedgedAnswer,
   Health,
   Ingestion,
+  KnowledgeRisk,
   LineageCommit,
   LineageDecision,
   Overview,
@@ -1092,6 +1093,39 @@ export const HEALTH: Health = {
 }
 
 // ---------- evaluation ----------
+
+// ---------- knowledge risk ----------
+
+/**
+ * Made up, like the maintainer_* people: the auth code's decisions are explained, but everyone
+ * who made them has gone, and the two items the sample has no decision for keep changing.
+ * The counts agree with EXPLORER above: 17 of its functions, classes and config keys have a
+ * decision, and the two that do not are the ones listed as unexplained.
+ */
+export const RISK: KnowledgeRisk = {
+  orphaned: [
+    {
+      entity: E.digestHeader,
+      decisions: 2,
+      people: [
+        person('maintainer_b', 'Proposed the decision', false, '2021-04-12'),
+        person('maintainer_d', 'Approved it', false, '2019-11-30'),
+      ],
+      last_decided_at: '2021-04-12T09:30:00',
+    },
+    {
+      entity: E.basicAuth,
+      decisions: 1,
+      people: [person('maintainer_d', 'Proposed the decision', false, '2019-11-30')],
+      last_decided_at: '2019-11-30T16:05:00',
+    },
+  ],
+  unexplained: [
+    { entity: E.checkCompatibility, commits: 14, authors: 5, last_changed_at: '2026-09-18T11:20:00' },
+    { entity: E.poolMaxsize, commits: 6, authors: 3, last_changed_at: '2025-12-02T08:45:00' },
+  ],
+  counts: { code_with_decisions: 17, orphaned: 2, changed_without_reason: 2 },
+}
 
 const notRun = { llm_only: null, vector_rag: null, whycode: null }
 

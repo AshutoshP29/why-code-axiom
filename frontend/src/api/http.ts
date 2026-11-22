@@ -9,6 +9,7 @@ import type {
   GuardReport,
   Health,
   Ingestion,
+  KnowledgeRisk,
   Lineage,
   Overview,
   Repo,
@@ -74,6 +75,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
     getLineage: (repo, entityId, asOf) =>
       get<Lineage>('/lineage', { repo, entity_id: entityId, as_of: asOf }),
     getHealth: (repo) => get<Health>('/health', { repo }),
+    getRisk: (repo) => get<KnowledgeRisk>('/risk', { repo }),
     getEvaluation: (repo) => get<Evaluation>('/evaluation', { repo }),
     getGraph: (repo, focus) => get<GraphView>('/graph', { repo, focus }),
     reingest: (repo) => post<Repo>('/repos/reingest', { repo }),
