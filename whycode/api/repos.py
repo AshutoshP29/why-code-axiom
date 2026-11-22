@@ -298,12 +298,8 @@ def add(
         raise HTTPException(404, "We could not find a public repository at that link.")
     if not facts.public:
         raise HTTPException(400, "Only public repositories can be added.")
-    if facts.eligible == 0:
-        raise HTTPException(
-            400,
-            f"{repo} has no merged pull request with {MIN_COMMENTS} or more comments, so there "
-            "is no discussion to read decisions from.",
-        )
+    # No discussed PR yet is fine: the run maps the code and commits, and live sync keeps them
+    # current; answers give facts only until a merged PR with a discussion brings decisions.
     if not estimate(repo, facts, _graph_nodes(run)).fits_free_tier:
         raise HTTPException(400, f"{repo} is too large for the free graph.")
     owner, name = repo.split("/")

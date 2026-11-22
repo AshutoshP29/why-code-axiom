@@ -192,18 +192,24 @@ def test_the_daily_limit_is_kept():
     [
         (repos.Facts(found=False), 404),
         (repos.Facts(found=True, public=False), 400),
-        (repos.Facts(found=True, public=True, size_kb=100, eligible=0), 400),
         (repos.Facts(**{**PUBLIC.__dict__, "size_kb": repos.MAX_REPO_KB + 1}), 400),
     ],
 )
-def test_missing_private_undiscussed_and_huge_repos_are_refused_before_anything_is_written(
-    facts, status
-):
+def test_missing_private_and_huge_repos_are_refused_before_anything_is_written(facts, status):
     graph, dispatcher = RepoGraph(), FakeDispatcher()
     with pytest.raises(HTTPException) as err:
         add(graph, FakeFacts(facts), dispatcher)
     assert err.value.status_code == status
     assert NEW not in graph.nodes and dispatcher.started == []
+
+
+def test_a_repo_with_no_discussed_pr_yet_is_added_for_its_code_and_commits():
+    graph, dispatcher = RepoGraph(), FakeDispatcher()
+    new = repos.Facts(found=True, public=True, size_kb=100, commits=2, eligible=0)
+    add(graph, FakeFacts(new), dispatcher)
+    assert NEW in graph.nodes and dispatcher.started == [NEW]
+    check = repos.estimate(NEW, new, graph_nodes=0)
+    assert (check.ai_calls, check.fits_free_tier) == (0, True)
 
 
 def test_without_a_dispatch_token_nothing_is_written():

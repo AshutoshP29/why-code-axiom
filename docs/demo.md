@@ -85,3 +85,23 @@ WhyCode says so."
 - A 503 about the graph: resume Aura in its console and reload.
 - Do not re-run `python -m whycode.graph.supersession` before recording: one wrong verdict was
   removed by hand and a re-run would add it back from the cache.
+
+## Live sync (optional, about 60 s)
+
+Shows the graph keeping up with a repository as it changes. Set up already: the demo repository
+`AshutoshP29/whycode-demo` (a tiny shop checkout, 2 commits) is added to WhyCode, and its webhook
+points at the API.
+
+1. In WhyCode, pick `ashutoshp29/whycode-demo` in the repo switcher. Graph health shows its
+   commits; ask "Why does apply_discount work this way?": no recorded decision, facts only (the
+   2 commits that changed it).
+2. On GitHub, edit `shop/pricing.py` in the browser (for example change `MAX_DISCOUNT = 0.30` to
+   `0.25`) and commit to main.
+3. Within a few seconds: Graph health shows one more commit; asking about `MAX_DISCOUNT` or
+   `apply_discount` again lists the new commit among the facts, with its author and date. On the
+   Graph tab (when merged) the new Commit node appears, linked to the code it changed.
+4. Optional, to show decisions arriving: open a pull request on the demo repo, discuss it in 5 or
+   more comments (why the change), merge it. The merge restarts the ingestion run; about 3 minutes
+   later asking "why" returns the decision with the comments as evidence.
+
+If nothing changes: check the webhook's "Recent deliveries" on GitHub (it should answer 200).

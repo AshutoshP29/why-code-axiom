@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
+from whycode.api import limits
 from whycode.api.app import create_app, get_run
 
 REPO = "psf/requests"
@@ -158,5 +159,7 @@ def client(graph: FakeGraph, overrides: dict | None = None) -> TestClient:
     dependencies (e.g. get_gaps) to stand-ins."""
     app = create_app()
     app.dependency_overrides[get_run] = lambda: graph
+    calls = limits.MemoryCalls()  # never the real Postgres from unit tests
+    app.dependency_overrides[limits.get_calls] = lambda: calls
     app.dependency_overrides.update(overrides or {})
     return TestClient(app)
