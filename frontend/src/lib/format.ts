@@ -1,5 +1,10 @@
 const grouped = new Intl.NumberFormat('en-US')
 
+/** 12104 -> "12,104": every digit, where formatCount would shorten it. */
+export function formatNumber(n: number): string {
+  return grouped.format(n)
+}
+
 /** 2140 -> "2,140"; 14200 -> "14.2k" (big numbers are shortened, as on the Home cards). */
 export function formatCount(n: number): string {
   return n >= 10_000 ? formatCompact(n) : grouped.format(n)

@@ -40,6 +40,7 @@ function Logo() {
 const NAV = [
   { to: '/', label: 'Home', end: true },
   { to: '/explore', label: 'Explore', end: false },
+  { to: '/graph', label: 'Graph', end: false },
   { to: '/guard', label: 'PR Guard', end: false },
   { to: '/health', label: 'Graph health', end: false },
   { to: '/risk', label: 'Knowledge risk', end: false },

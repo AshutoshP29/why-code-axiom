@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@tanstack/react-query": "^5.105.0",
+    "d3-force": "3.0.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-router": "^8.5.0"
@@ -27,6 +28,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.8",
+    "@types/d3-force": "3.0.10",
     "@types/node": "^24.19.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
@@ -37,5 +39,10 @@
     "typescript": "~6.0.3",
     "vite": "^8.3.4",
     "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "d3-dispatch": "3.0.1",
+    "d3-quadtree": "3.0.1",
+    "d3-timer": "3.0.1"
   }
 }

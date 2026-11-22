@@ -33,6 +33,7 @@ function dispatch(api: WhyCodeApi, { method, path, params: q, body }: Call): Pro
     case 'GET /lineage': return api.getLineage(q.repo, q.entity_id, q.as_of ?? null)
     case 'GET /health': return api.getHealth(q.repo)
     case 'GET /evaluation': return api.getEvaluation(q.repo)
+    case 'GET /graph': return api.getGraph(q.repo, q.focus ?? null)
     case 'POST /gaps': return api.flagGap(b.repo, b.entity_id, b.question)
     case 'GET /auth/me': return api.getMe() // null: sign-in off, as on a local API
     default: return Promise.reject(new ApiError(404, `No route ${method} ${path}`))
@@ -152,5 +153,36 @@ test('Flagging a gap sends the item and the question', async ({ page }) => {
     path: '/gaps',
     params: {},
     body: { repo: 'psf/requests', entity_id: ID.poolMaxsize, question: 'why is the default 10?' },
+  })
+})
+
+test('Graph: a big repo is drawn on a canvas, with the decision-graph note, and search sends focus', async ({ page }) => {
+  // 400 nodes, over the 300 the SVG drawing takes: the screen switches to a canvas.
+  const nodes = Array.from({ length: 400 }, (_, i) => ({
+    id: `psf/requests#dec:${i}`,
+    kind: 'decision',
+    label: `Decision ${i}`,
+    detail: null,
+  }))
+  const edges = nodes.slice(1).map((n, i) => ({ source: nodes[i].id, target: n.id, type: 'SUPERSEDES' }))
+  const calls = await fakeBackend(page, undefined, (call, data) =>
+    call.path === '/graph' && !call.params.focus
+      ? { nodes, edges, scope: 'decisions', truncated: true, total_nodes: 12_104, total_edges: 40_000 }
+      : data,
+  )
+  await page.goto('/graph')
+  await expect(page.getByText('400 nodes, 399 links')).toBeVisible()
+  await expect(page.getByRole('img', { name: /^Graph of psf\/requests: 400 nodes/ })).toBeVisible()
+  await expect(page.getByRole('note')).toHaveText('Showing the decision graph: 400 of 12,104 nodes. Search to focus.')
+  expect(calls).toContainEqual({ method: 'GET', path: '/graph', params: { repo: 'psf/requests' }, body: null })
+
+  await page.getByRole('searchbox', { name: 'Search the graph' }).fill('apparent')
+  await page.getByRole('list', { name: 'Search results' }).getByRole('button', { name: /Response\.apparent_encoding/ }).click()
+  await expect(page.getByText(/Two links around/)).toBeVisible()
+  expect(calls).toContainEqual({
+    method: 'GET',
+    path: '/graph',
+    params: { repo: 'psf/requests', focus: ID.apparentEncoding },
+    body: null,
   })
 })

@@ -150,6 +150,49 @@ export interface GraphEdge {
   label: string // relationship type, e.g. "AFFECTS"
 }
 
+// ---------- the Graph screen ----------
+
+export type GraphViewKind =
+  | 'file'
+  | 'class'
+  | 'function'
+  | 'config'
+  | 'module'
+  | 'decision'
+  | 'evidence'
+  | 'pull_request'
+  | 'issue'
+  | 'commit'
+  | 'person'
+
+export type GraphScope = 'all' | 'decisions' | 'focus'
+
+export interface GraphViewNode {
+  id: string // the graph id
+  kind: GraphViewKind
+  label: string // qualified name, file name, "PR #5797", a decision's summary, a commit's first line, a login
+  detail: string | null // a short second line: path, date or title
+}
+
+export interface GraphViewEdge {
+  source: string
+  target: string
+  type: string // relationship type, e.g. "AFFECTS"
+}
+
+/**
+ * all: the whole repo graph (it has at most `limit` nodes); decisions: every decision with the code it
+ * affects, its PR and its people, for bigger repos; focus: two hops around one node.
+ */
+export interface GraphView {
+  nodes: GraphViewNode[]
+  edges: GraphViewEdge[]
+  scope: GraphScope
+  truncated: boolean // cut to the limit: the screen shows less than there is
+  total_nodes: number // in the whole repo graph
+  total_edges: number
+}
+
 /** Something the history states as fact, kept apart from reasons on the refusal screen. */
 export interface Fact {
   title: string
@@ -385,6 +428,8 @@ export interface WhyCodeApi {
   /** Knowledge risk: code nobody active can explain, and code nobody explained at all. */
   getRisk(repo: string): Promise<KnowledgeRisk>
   getEvaluation(repo: string): Promise<Evaluation>
+  /** The Graph screen; `focus` null shows the whole graph, or the decision graph of a big repo. */
+  getGraph(repo: string, focus: string | null): Promise<GraphView>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
   /** Whether sign-in is on, and who is signed in. */
