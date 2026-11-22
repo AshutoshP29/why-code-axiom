@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 from starlette.concurrency import run_in_threadpool
 
-from whycode.api import answers, auth, guard, limits, lineage, reads, repos
+from whycode.api import answers, auth, graph_view, guard, limits, lineage, reads, repos
 from whycode.api import models as m
 from whycode.api.gaps import GapStore
 from whycode.config import ConfigError
@@ -205,6 +205,18 @@ def get_health(
 ):
     found = require_repo(run, repo)
     return reads.health(run, found, gap_queue(run, gaps, repo))
+
+
+@router.get("/graph", response_model=m.GraphView)
+def get_graph(
+    run: RunDep,
+    repo: RepoDep,
+    focus: Annotated[str | None, Query(max_length=1000)] = None,
+    limit: Annotated[int, Query(ge=1, le=graph_view.MAX_LIMIT)] = graph_view.DEFAULT_LIMIT,
+):
+    """The Graph screen: the whole repo graph, its decision graph, or two hops around `focus`."""
+    require_repo(run, repo)
+    return graph_view.view(run, repo, focus, limit)
 
 
 @router.get("/evaluation", response_model=m.Evaluation)

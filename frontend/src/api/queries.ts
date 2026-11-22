@@ -102,6 +102,19 @@ export function useEvaluation(repo: string | null) {
   })
 }
 
+/** The Graph screen. `live` refetches every 5 s, so a node written by a sync shows up on its own. */
+export function useGraphView(repo: string | null, focus: string | null, live: boolean) {
+  const { api } = useApi()
+  return useQuery({
+    queryKey: ['graph', repo, focus],
+    queryFn: repo ? () => api.getGraph(repo, focus) : skipToken,
+    refetchInterval: live ? GRAPH_LIVE_MS : false,
+    placeholderData: keepPreviousData, // a new focus keeps the old drawing until the new one lands
+  })
+}
+
+export const GRAPH_LIVE_MS = 5000
+
 export function useCheckRepo() {
   const { api } = useApi()
   return useMutation({ mutationFn: (input: string) => api.checkRepo(input) })

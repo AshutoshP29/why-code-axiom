@@ -23,8 +23,13 @@ import {
 import type {
   Answer,
   ConfidenceFactor,
+  Decision,
   Entity,
   EntityMatch,
+  GraphView,
+  GraphViewEdge,
+  GraphViewKind,
+  GraphViewNode,
   GuardHit,
   Health,
   RelatedItem,
@@ -118,6 +123,124 @@ function withMatchScore(answer: Answer, score: number): Answer {
       f.label === 'Entity match' ? { ...f, value: score, display: formatPct(score), tone: score >= 0.5 ? 'good' : 'bad' } : f,
     ),
   }
+}
+
+// ---------- the Graph screen ----------
+
+const cut = (text: string, size: number) => {
+  const flat = text.split(/\s+/).filter(Boolean).join(' ')
+  return flat.length <= size ? flat : `${flat.slice(0, size - 1).trimEnd()}…`
+}
+
+/** The kind of node a graph id is: "psf/requests#pr:1565" is a pull request. */
+function idKind(id: string): GraphViewKind | null {
+  const kind = id.slice(id.indexOf('#') + 1).split(':')[0]
+  const byKind: Record<string, GraphViewKind> = {
+    pr: 'pull_request',
+    issue: 'issue',
+    commit: 'commit',
+    dec: 'decision',
+    user: 'person',
+    ev: 'evidence',
+  }
+  return byKind[kind] ?? null
+}
+
+/**
+ * The sample repo's graph, put together from the sample data: its code, the decisions the sample
+ * answers and histories hold, their pull requests, issues, commits, people and evidence.
+ */
+export function sampleGraph(): Pick<GraphView, 'nodes' | 'edges'> {
+  const nodes = new Map<string, GraphViewNode>()
+  const edges = new Map<string, GraphViewEdge>()
+  const add = (id: string, kind: GraphViewKind, label: string, detail: string | null = null) => {
+    if (!nodes.has(id)) nodes.set(id, { id, kind, label, detail })
+  }
+  const link = (source: string, target: string, type: string) =>
+    edges.set(`${source}|${target}|${type}`, { source, target, type })
+  const person = (login: string) => {
+    const id = `${SAMPLE_REPO}#user:${login}`
+    add(id, 'person', login)
+    return id
+  }
+
+  // Code: each item inside its class when it has one, otherwise inside its file.
+  for (const e of ENTITIES) add(e.id, e.kind, e.kind === 'file' ? e.name : e.qualified_name, e.path)
+  for (const e of ENTITIES) {
+    if (e.kind === 'file' || !e.path) continue
+    const owner = ENTITIES.find(
+      (c) => c.kind === 'class' && c.path === e.path && e.qualified_name.startsWith(`${c.qualified_name}.`),
+    )
+    link(owner?.id ?? `${SAMPLE_REPO}#file:${e.path}`, e.id, 'CONTAINS')
+  }
+
+  const addDecision = (d: Decision, affects: string) => {
+    const status = d.status === 'ACTIVE' ? null : d.status.toLowerCase()
+    add(d.id, 'decision', cut(d.summary, 80), [d.decided_at.slice(0, 10), status].filter(Boolean).join(', '))
+    link(d.id, affects, 'AFFECTS')
+    const sourceKind = idKind(d.source.id)
+    if (sourceKind) {
+      add(d.source.id, sourceKind, d.source.label)
+      link(d.id, d.source.id, 'DECIDED_IN')
+    }
+    if (d.proposed_by) link(d.id, person(d.proposed_by), 'PROPOSED_BY')
+    for (const login of d.approved_by) link(d.id, person(login), 'APPROVED_BY')
+  }
+
+  // Histories first: their commits have messages, where the answer drawings only show a sha.
+  for (const [entityId, lineage] of Object.entries(LINEAGES)) {
+    for (const d of lineage.decisions) {
+      addDecision(d, entityId)
+      for (const s of d.supersedes) link(d.id, s.decision_id, 'SUPERSEDES')
+    }
+    for (const c of lineage.commits) {
+      const id = `${SAMPLE_REPO}#commit:${c.sha}`
+      add(id, 'commit', cut(c.message.split('\n')[0], 60), `${c.sha.slice(0, 7)}, ${c.date.slice(0, 10)}`)
+      link(id, entityId, 'MODIFIES')
+    }
+  }
+
+  for (const answer of Object.values(ANSWERS)) {
+    if (answer.verdict === 'refused') continue
+    addDecision(answer.decision, answer.entity.id)
+    for (const note of answer.superseded) {
+      addDecision(note.decision, answer.entity.id)
+      link(answer.decision.id, note.decision.id, 'SUPERSEDES')
+    }
+    for (const step of answer.evidence_chain) {
+      if (step.kind === 'code' || step.kind === 'commit') continue
+      const evidence = step.source.id.replace('#', '#ev:') + ':body'
+      add(evidence, 'evidence', cut(step.excerpt, 60), step.meta[0] ?? null)
+      link(answer.decision.id, evidence, 'SUPPORTED_BY')
+    }
+    for (const login of answer.who_to_ask.map((p) => p.login)) person(login)
+    for (const n of answer.graph.nodes) {
+      if (n.kind !== 'entity') add(n.id, n.kind, n.label)
+    }
+    for (const e of answer.graph.edges) link(e.from, e.to, e.label)
+  }
+
+  return {
+    nodes: [...nodes.values()],
+    edges: [...edges.values()].filter((e) => nodes.has(e.source) && nodes.has(e.target)),
+  }
+}
+
+/** Everything within two links of `focus`, nearest first. */
+function aroundNode(graph: Pick<GraphView, 'nodes' | 'edges'>, focus: string): GraphViewNode[] {
+  const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  const order = [focus]
+  let frontier = [focus]
+  for (let hop = 0; hop < 2; hop++) {
+    const next = new Set<string>()
+    for (const e of graph.edges) {
+      if (frontier.includes(e.source)) next.add(e.target)
+      if (frontier.includes(e.target)) next.add(e.source)
+    }
+    frontier = [...next].filter((id) => !order.includes(id)).sort()
+    order.push(...frontier)
+  }
+  return order.map((id) => byId.get(id)).filter((n): n is GraphViewNode => n !== undefined)
 }
 
 export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {}): WhyCodeApi {
@@ -361,6 +484,21 @@ export function createMockApi({ delayMs = 250, now = Date.now }: MockOptions = {
       await wait()
       const repo = findRepo(repoId)
       return copy(repoId === SAMPLE_REPO ? EVALUATION : { ...healthFor(repo).evaluation, questions: [] })
+    },
+
+    async getGraph(repoId, focus) {
+      await wait()
+      findRepo(repoId)
+      const graph = repoId === SAMPLE_REPO ? sampleGraph() : { nodes: [], edges: [] }
+      const totals = { total_nodes: graph.nodes.length, total_edges: graph.edges.length }
+      if (focus === null) return copy({ ...graph, scope: 'all', truncated: false, ...totals })
+      if (!graph.nodes.some((n) => n.id === focus)) {
+        throw new ApiError(404, `${focus} is not in the graph for ${repoId}`)
+      }
+      const nodes = aroundNode(graph, focus)
+      const shown = new Set(nodes.map((n) => n.id))
+      const edges = graph.edges.filter((e) => shown.has(e.source) && shown.has(e.target))
+      return copy({ nodes, edges, scope: 'focus', truncated: false, ...totals })
     },
 
     async reingest(repoId) {

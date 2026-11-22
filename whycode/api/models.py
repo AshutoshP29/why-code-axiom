@@ -18,6 +18,20 @@ SupersedeKind = Literal["reverses", "replaces", "refines"]
 EvidenceKind = Literal["incident", "issue", "discussion", "commit", "code"]
 Tone = Literal["good", "bad", "neutral"]
 GraphNodeKind = Literal["entity", "decision", "pull_request", "issue", "commit", "person"]
+GraphViewKind = Literal[
+    "file",
+    "class",
+    "function",
+    "config",
+    "module",
+    "decision",
+    "evidence",
+    "pull_request",
+    "issue",
+    "commit",
+    "person",
+]
+GraphScope = Literal["all", "decisions", "focus"]
 MatchedBy = Literal["selected", "search"]
 ShowcaseOutcome = Literal["answered", "superseded", "hedged", "refused"]
 ExpectedOutcome = Literal["answered", "superseded", "refused"]
@@ -173,6 +187,30 @@ class GraphEdge(BaseModel):
 class AnswerGraph(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+class GraphViewNode(BaseModel):
+    id: str
+    kind: GraphViewKind
+    label: str
+    detail: str | None  # a short second line: path, date or title
+
+
+class GraphViewEdge(BaseModel):
+    source: str
+    target: str
+    type: str  # relationship type, e.g. "AFFECTS"
+
+
+class GraphView(BaseModel):
+    """The Graph screen: the whole repo graph, its decision graph, or two hops around a node."""
+
+    nodes: list[GraphViewNode]
+    edges: list[GraphViewEdge]
+    scope: GraphScope
+    truncated: bool  # cut to the limit: the screen shows less than there is
+    total_nodes: int  # in the whole repo graph
+    total_edges: int
 
 
 class Fact(BaseModel):

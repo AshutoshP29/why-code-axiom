@@ -5,6 +5,7 @@ import type {
   Evaluation,
   Explorer,
   Gap,
+  GraphView,
   GuardReport,
   Health,
   Ingestion,
@@ -74,6 +75,7 @@ export function createHttpApi(baseUrl: string, fetchFn: typeof fetch = fetch): W
       get<Lineage>('/lineage', { repo, entity_id: entityId, as_of: asOf }),
     getHealth: (repo) => get<Health>('/health', { repo }),
     getEvaluation: (repo) => get<Evaluation>('/evaluation', { repo }),
+    getGraph: (repo, focus) => get<GraphView>('/graph', { repo, focus }),
     reingest: (repo) => post<Repo>('/repos/reingest', { repo }),
     flagGap: (repo, entityId, question) =>
       post<Gap>('/gaps', { repo, entity_id: entityId, question }),

@@ -11,6 +11,11 @@ export function lineagePath(entityId: string, asOfYear?: number): string {
   return `/lineage?${params}`
 }
 
+/** focus: show the two links around that node instead of the whole graph. */
+export function graphPath(focus?: string): string {
+  return focus ? `/graph?${new URLSearchParams({ focus })}` : '/graph'
+}
+
 export function explorePath(fileId?: string): string {
   return fileId ? `/explore?${new URLSearchParams({ file: fileId })}` : '/explore'
 }
