@@ -25,6 +25,9 @@ const SELECTED_RING = '#e8eaed' // --color-ink
 const MIN_ZOOM = 0.08
 const MAX_ZOOM = 8
 const LABELS_FROM_ZOOM = 1.4 // every label shows once zoomed in this far
+const PRE_TICKS = 130 // d3's alpha falls from 1 to about 0.05 in this many ticks
+const SETTLE_ALPHA = 0.05
+const LIVE_ALPHA = 0.15 // gentle: a few new nodes should not shake the whole drawing
 
 interface SimNode extends SimulationNodeDatum {
   id: string
@@ -207,7 +210,7 @@ export function ForceGraph({
       raf.current = 0
       const sim = simRef.current
       if (!sim) return
-      if (needsFit.current && !userMoved.current && (!ANIMATE || sim.alpha() < 0.3)) {
+      if (needsFit.current && !userMoved.current) {
         transform.current = fitted(sim, size.w, size.h) ?? transform.current
         needsFit.current = false
       }
@@ -288,16 +291,15 @@ export function ForceGraph({
       shown.map((e) => ({ source: e.source, target: e.target, type: e.type })),
     )
     if (fromScratch) {
+      // Most of the layout before the first frame, so the first view is placed and fitted; the
+      // rest settles on screen.
+      sim.alpha(1)
+      sim.tick(PRE_TICKS)
       needsFit.current = true
       userMoved.current = false
     }
-    if (ANIMATE) {
-      sim.alpha(fromScratch ? 1 : 0.35).restart()
-    } else {
-      sim.alpha(1)
-      sim.tick(40)
-      engine.current.render()
-    }
+    if (ANIMATE) sim.alpha(fromScratch ? SETTLE_ALPHA : LIVE_ALPHA).restart()
+    engine.current.render()
   }, [nodes, edges, layoutKey, engine])
 
   // Follow the box's size.
@@ -306,7 +308,9 @@ export function ForceGraph({
     if (!box || typeof ResizeObserver === 'undefined') return
     const observer = new ResizeObserver(([entry]) => {
       const { width, height } = entry.contentRect
-      if (width > 0 && height > 0) setSize({ w: Math.round(width), h: Math.round(height) })
+      if (width === 0 || height === 0) return
+      if (!userMoved.current) needsFit.current = true // still the fitted view: fit the new size
+      setSize({ w: Math.round(width), h: Math.round(height) })
     })
     observer.observe(box)
     return () => observer.disconnect()
