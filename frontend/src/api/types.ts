@@ -400,6 +400,8 @@ export interface WhyCodeApi {
   getLineage(repo: string, entityId: string, asOf: string | null): Promise<Lineage>
   getHealth(repo: string): Promise<Health>
   getEvaluation(repo: string): Promise<Evaluation>
+  /** The Graph screen; `focus` null shows the whole graph, or the decision graph of a big repo. */
+  getGraph(repo: string, focus: string | null): Promise<GraphView>
   reingest(repo: string): Promise<Repo>
   flagGap(repo: string, entityId: string, question: string): Promise<Gap>
   /** Whether sign-in is on, and who is signed in. */
