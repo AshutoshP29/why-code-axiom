@@ -10,8 +10,17 @@ export function AuthGate({ children }: { children: ReactNode }) {
   const { sample } = useApi()
   const me = useMe(!sample)
   if (sample) return children
-  if (me.isPending) return <Loading label="Checking sign-in" />
-  if (me.error) return <ErrorNotice error={me.error} onRetry={() => me.refetch()} />
+  if (me.isPending || me.error)
+    return (
+      <main>
+        <h1 className="sr-only">WhyCode</h1>
+        {me.error ? (
+          <ErrorNotice error={me.error} onRetry={() => me.refetch()} />
+        ) : (
+          <Loading label="Checking sign-in" />
+        )}
+      </main>
+    )
   if (me.data.enabled && !me.data.user) return <SignIn />
   return children
 }
