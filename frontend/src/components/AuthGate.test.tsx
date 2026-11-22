@@ -22,6 +22,14 @@ function renderLive(api: WhyCodeApi, path = '/health?x=1') {
 }
 
 describe('sign-in', () => {
+  it('has a page heading while it checks the sign-in', () => {
+    const api = createMockApi({ delayMs: 0 })
+    api.getMe = () => new Promise(() => {}) // never answers
+    renderLive(api)
+    expect(screen.getByRole('status')).toHaveTextContent('Checking sign-in')
+    expect(screen.getByRole('heading', { level: 1, name: 'WhyCode' })).toBeInTheDocument()
+  })
+
   it('asks a signed-out visitor to sign in, coming back to the same page', async () => {
     const api = createMockApi({ delayMs: 0 })
     api.getMe = async () => ({ enabled: true, user: null, can_add_repos: false })
